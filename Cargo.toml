@@ -1,0 +1,8 @@
+[package]
+name = "whisper-rs-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hound = "3.5.1"
+whisper-rs = { git = "https://github.com/tazz4843/whisper-rs", version = "0.13.0", features = ["metal","whisper-cpp-log"] }
