@@ -1,11 +1,95 @@
 // This example is not going to build in this folder.
 // You need to copy this code into your project and add the dependencies whisper_rs and hound in your cargo.toml
 
-use hound;
+use hound::{self, Sample};
 use serde_json::json;
 use std::{fs::File, process, env};
 use std::io::Write;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+
+use std::process::{Command, Stdio};
+use std::io::{Read, Cursor};
+use std::convert::TryInto;
+
+// fn old() {
+
+//     // Open the audio file.
+//     let reader = hound::WavReader::open(input_file).expect("failed to open file");
+//     #[allow(unused_variables)]
+//     let hound::WavSpec {
+//         channels,
+//         sample_rate,
+//         bits_per_sample,
+//         ..
+//     } = reader.spec();
+
+//     // Convert the audio to floating point samples.
+//     let samples: Vec<i16> = reader
+//         .into_samples::<i16>()
+//         .map(|x| x.expect("Invalid sample"))
+//         .collect();
+//     let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
+//     whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
+
+//     // Convert audio to 16KHz mono f32 samples, as required by the model.
+//     // These utilities are provided for convenience, but can be replaced with custom conversion logic.
+//     // SIMD variants of these functions are also available on nightly Rust (see the docs).
+//     if channels == 2 {
+//         audio = whisper_rs::convert_stereo_to_mono_audio(&audio).expect("Conversion error");
+//     } else if channels != 1 {
+//         panic!(">2 channels unsupported");
+//     }
+
+//     if sample_rate != 16000 {
+//         panic!("sample rate must be 16KHz");
+//     }
+
+// }
+
+fn convert_file_to_wave(input_file: &str) -> Result<Vec<i16>, Box<dyn std::error::Error>> {
+    // Path to the input file
+    //let input_file = "input.mp3"; // Replace with your file path
+
+    // Run ffmpeg to get raw PCM (s16le) data at 16kHz
+    let mut ffmpeg_process = Command::new("ffmpeg")
+        .args(&[
+            "-i", input_file,      // Input file
+            "-f", "s16le",         // Output format: raw PCM, signed 16-bit little-endian
+            "-acodec", "pcm_s16le",// Audio codec: PCM 16-bit signed little-endian
+            "-ac", "1",            // Number of audio channels (1 = mono)
+            "-ar", "16000",        // Sample rate: 16 kHz
+            "-"                    // Output to stdout
+        ])
+        .stdout(Stdio::piped())
+        //.stderr(Stdio::null()) // Optional: Ignore stderr output
+        .spawn()?;
+
+    // Capture the stdout from the ffmpeg process (raw PCM data)
+    let mut reader = std::io::BufReader::new(
+        ffmpeg_process.stdout.take().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Failed to capture ffmpeg stdout"))?
+    );
+    let mut buffer: Vec<u8> = Vec::new();
+    reader.read_to_end(&mut buffer)?;
+
+    // Wait for the ffmpeg process to finish and check the exit status
+    let status = ffmpeg_process.wait()?;
+    if !status.success() {
+        return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
+    }
+
+    // Convert the raw byte buffer into Vec<i16>
+    let mut samples: Vec<i16> = Vec::with_capacity(buffer.len() / 2); // i16 is 2 bytes
+    for chunk in buffer.chunks_exact(2) {
+        let sample = i16::from_le_bytes(chunk.try_into().unwrap()); // Convert 2 bytes to i16
+        samples.push(sample);
+    }
+
+    // `samples` now holds the audio data as `Vec<i16>` in 16 kHz
+    println!("Captured {} samples at 16kHz", samples.len());
+
+    Ok(samples)
+}
+
 
 /// Loads a context and model, processes an audio file, and prints the resulting transcript to stdout.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,6 +106,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get the first argument (the second element in the args vector)
     let input_file = &args[1];
     //println!("First argument: {}", first_argument);
+
+
+    let samples = convert_file_to_wave(input_file)?;
+
+    let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
+
+    whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
+
 
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
 
@@ -84,37 +176,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Enable token level timestamps
     params.set_token_timestamps(true);
     params.set_n_max_text_ctx(64);
-
-    // Open the audio file.
-    let reader = hound::WavReader::open(input_file).expect("failed to open file");
-    #[allow(unused_variables)]
-    let hound::WavSpec {
-        channels,
-        sample_rate,
-        bits_per_sample,
-        ..
-    } = reader.spec();
-
-    // Convert the audio to floating point samples.
-    let samples: Vec<i16> = reader
-        .into_samples::<i16>()
-        .map(|x| x.expect("Invalid sample"))
-        .collect();
-    let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
-    whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
-
-    // Convert audio to 16KHz mono f32 samples, as required by the model.
-    // These utilities are provided for convenience, but can be replaced with custom conversion logic.
-    // SIMD variants of these functions are also available on nightly Rust (see the docs).
-    if channels == 2 {
-        audio = whisper_rs::convert_stereo_to_mono_audio(&audio).expect("Conversion error");
-    } else if channels != 1 {
-        panic!(">2 channels unsupported");
-    }
-
-    if sample_rate != 16000 {
-        panic!("sample rate must be 16KHz");
-    }
 
     //let mut file = File::create("transcript.jsonl").expect("failed to create file");
 
