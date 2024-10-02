@@ -206,16 +206,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut count = 0;
 
-    //let mut segment_clone = segment.clone();
-    params.set_abort_callback_safe(move || {
+    let closure =  |ctx,state,user_data| {
         count += 1;
         eprintln!("count: {}", count);
         //eprintln!("segment: {:?}", segment_clone);
-        if(count > 10) {
+        if count > 10{
             return true;
         }
         false
-    });
+    };
+
+    unsafe {
+               // Stable address
+               //let closure = Box::new(closure) as Box<dyn FnMut() -> bool>;
+               // Thin pointer
+               //let closure = Box::new(closure);
+               // Raw pointer
+               //let closure = Box::into_raw(closure);
+        //let mut segment_clone = segment.clone();
+        params.set_start_encoder_callback(Some(closure));
+    }
 
     // Run the model.
     state.full(params, &audio[..]).expect("failed to run model");
