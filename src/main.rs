@@ -204,10 +204,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //writeln!(file, "{}", line).expect("failed to write to file");
     });
 
+    let mut count = 0;
+
     //let mut segment_clone = segment.clone();
     params.set_abort_callback_safe(move || {
-        segment.prev_text = segment.cur_text.clone();
+        count += 1;
+        eprintln!("count: {}", count);
         //eprintln!("segment: {:?}", segment_clone);
+        if(count > 10) {
+            return true;
+        }
         false
     });
 
