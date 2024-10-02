@@ -1,7 +1,9 @@
 appenders:
-  stdout:
+  my_console_appender:
     kind: console
+    target: stderr
+    tty_only: false
 root:
   level: info
   appenders:
-    - stdout
+    - my_console_appender
