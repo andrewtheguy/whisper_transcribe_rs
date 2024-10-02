@@ -2,12 +2,15 @@
 // You need to copy this code into your project and add the dependencies whisper_rs and hound in your cargo.toml
 
 use hound;
+use serde_json::json;
 use std::fs::File;
 use std::io::Write;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 /// Loads a context and model, processes an audio file, and prints the resulting transcript to stdout.
-fn main() -> Result<(), &'static str> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
 
     whisper_rs::install_whisper_log_trampoline();
     
@@ -62,9 +65,9 @@ fn main() -> Result<(), &'static str> {
     // Disable anything that prints to stdout.
     params.set_print_special(false);
     params.set_debug_mode(false);
-    params.set_print_progress(true);
-    params.set_print_realtime(true);
-    params.set_print_timestamps(true);
+    params.set_print_progress(false);
+    params.set_print_realtime(false);
+    params.set_print_timestamps(false);
     // Enable token level timestamps
     params.set_token_timestamps(true);
     params.set_n_max_text_ctx(64);
@@ -100,53 +103,61 @@ fn main() -> Result<(), &'static str> {
         panic!("sample rate must be 16KHz");
     }
 
+    params.set_segment_callback_safe(|data: whisper_rs::SegmentCallbackData| {
+        let line = json!({"start_timestamp":data.start_timestamp, 
+        "end_timestamp":data.end_timestamp, "text":data.text});
+        println!("{}", line);
+    });
+
     // Run the model.
     state.full(params, &audio[..]).expect("failed to run model");
 
-    // Create a file to write the transcript to.
-    let mut file = File::create("transcript.txt").expect("failed to create file");
+    eprintln!("{}",state.full_n_segments().expect("failed to get number of segments"));
 
-    // Iterate through the segments of the transcript.
-    let num_segments = state
-        .full_n_segments()
-        .expect("failed to get number of segments");
-    for i in 0..num_segments {
-        // Get the transcribed text and timestamps for the current segment.
-        let segment = state
-            .full_get_segment_text(i)
-            .expect("failed to get segment");
-        let start_timestamp = state
-            .full_get_segment_t0(i)
-            .expect("failed to get start timestamp");
-        let end_timestamp = state
-            .full_get_segment_t1(i)
-            .expect("failed to get end timestamp");
+    // // Create a file to write the transcript to.
+    // let mut file = File::create("transcript.txt").expect("failed to create file");
 
-        let first_token_dtw_ts = if let Ok(token_count) = state.full_n_tokens(i) {
-            if token_count > 0 {
-                if let Ok(token_data) = state.full_get_token_data(i, 0) {
-                    token_data.t_dtw
-                } else {
-                    -1i64
-                }
-            } else {
-                -1i64
-            }
-        } else {
-            -1i64
-        };
-        // Print the segment to stdout.
-        println!(
-            "[{} - {} ({})]: {}",
-            start_timestamp, end_timestamp, first_token_dtw_ts, segment
-        );
+    // // Iterate through the segments of the transcript.
+    // let num_segments = state
+    //     .full_n_segments()
+    //     .expect("failed to get number of segments");
+    // for i in 0..num_segments {
+    //     // Get the transcribed text and timestamps for the current segment.
+    //     let segment = state
+    //         .full_get_segment_text(i)
+    //         .expect("failed to get segment");
+    //     let start_timestamp = state
+    //         .full_get_segment_t0(i)
+    //         .expect("failed to get start timestamp");
+    //     let end_timestamp = state
+    //         .full_get_segment_t1(i)
+    //         .expect("failed to get end timestamp");
 
-        // Format the segment information as a string.
-        let line = format!("[{} - {}]: {}\n", start_timestamp, end_timestamp, segment);
+    //     // let first_token_dtw_ts = if let Ok(token_count) = state.full_n_tokens(i) {
+    //     //     if token_count > 0 {
+    //     //         if let Ok(token_data) = state.full_get_token_data(i, 0) {
+    //     //             token_data.t_dtw
+    //     //         } else {
+    //     //             -1i64
+    //     //         }
+    //     //     } else {
+    //     //         -1i64
+    //     //     }
+    //     // } else {
+    //     //     -1i64
+    //     // };
+    //     // Print the segment to stdout.
+    //     println!(
+    //         "[{} - {} ({})]: {}",
+    //         start_timestamp, end_timestamp, first_token_dtw_ts, segment
+    //     );
 
-        // Write the segment information to the file.
-        file.write_all(line.as_bytes())
-            .expect("failed to write to file");
-    }
+    //     // Format the segment information as a string.
+    //     let line = json!({"start_timestamp":start_timestamp, 
+    //     "end_timestamp":end_timestamp, "text":segment});
+
+    //     // Write the segment information to the file.
+    //     writeln!(file, "{}", line).expect("failed to write to file");
+    // }
     Ok(())
 }
