@@ -3,6 +3,7 @@
 
 use hound::{self, Sample};
 use serde_json::json;
+use core::str;
 use std::{fs::File, process, env};
 use std::io::Write;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
@@ -10,6 +11,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use std::process::{Command, Stdio};
 use std::io::{Read, Cursor};
 use std::convert::TryInto;
+use std::sync::{Arc, Mutex};
 
 // fn old() {
 
@@ -90,6 +92,11 @@ fn convert_file_to_wave(input_file: &str) -> Result<Vec<i16>, Box<dyn std::error
     Ok(samples)
 }
 
+#[derive(Debug, Clone)]
+struct Segment {
+    prev_text: String,
+    cur_text: String,
+}
 
 /// Loads a context and model, processes an audio file, and prints the resulting transcript to stdout.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -179,11 +186,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //let mut file = File::create("transcript.jsonl").expect("failed to create file");
 
-    params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
+    //let mut prev_text = "";
+    //let mut cur_text = "";
+
+
+    let mut segment = Segment {
+        prev_text: String::new(),
+        cur_text: String::new(),
+    };
+
+    //let segment_clone = segment.clone();
+    params.set_segment_callback_safe(move |data: whisper_rs::SegmentCallbackData| {
         let line = json!({"start_timestamp":data.start_timestamp, 
         "end_timestamp":data.end_timestamp, "text":data.text});
         println!("{}", line);
+        segment.cur_text = data.text.clone();
         //writeln!(file, "{}", line).expect("failed to write to file");
+    });
+
+    //let mut segment_clone = segment.clone();
+    params.set_abort_callback_safe(move || {
+        segment.prev_text = segment.cur_text.clone();
+        //eprintln!("segment: {:?}", segment_clone);
+        false
     });
 
     // Run the model.
