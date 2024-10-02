@@ -1,0 +1,1 @@
+sample setup to transcribe with whisper.cpp's rust binding

@@ -3,12 +3,25 @@
 
 use hound;
 use serde_json::json;
-use std::fs::File;
+use std::{fs::File, process, env};
 use std::io::Write;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 /// Loads a context and model, processes an audio file, and prints the resulting transcript to stdout.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+    // Collect command-line arguments, skipping the first one (program's name)
+    let args: Vec<String> = env::args().collect();
+
+    // Check if the first argument (after the program name) is provided
+    if args.len() < 2 {
+        eprintln!("Usage: {} <argument>", args[0]);
+        process::exit(1);
+    }
+
+    // Get the first argument (the second element in the args vector)
+    let input_file = &args[1];
+    //println!("First argument: {}", first_argument);
 
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
 
@@ -73,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     params.set_n_max_text_ctx(64);
 
     // Open the audio file.
-    let reader = hound::WavReader::open("/Users/it3/test.wav").expect("failed to open file");
+    let reader = hound::WavReader::open(input_file).expect("failed to open file");
     #[allow(unused_variables)]
     let hound::WavSpec {
         channels,
@@ -103,10 +116,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         panic!("sample rate must be 16KHz");
     }
 
-    params.set_segment_callback_safe(|data: whisper_rs::SegmentCallbackData| {
+    //let mut file = File::create("transcript.jsonl").expect("failed to create file");
+
+    params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
         let line = json!({"start_timestamp":data.start_timestamp, 
         "end_timestamp":data.end_timestamp, "text":data.text});
         println!("{}", line);
+        //writeln!(file, "{}", line).expect("failed to write to file");
     });
 
     // Run the model.
@@ -159,5 +175,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     // Write the segment information to the file.
     //     writeln!(file, "{}", line).expect("failed to write to file");
     // }
+    
     Ok(())
 }
