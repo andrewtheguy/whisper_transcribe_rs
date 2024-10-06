@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use byteorder::{ByteOrder, LittleEndian};
 use hound::{self, Sample};
 
@@ -27,16 +25,20 @@ fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
     vec
 }
 
-fn transcribe(mut state: whisper_rs::WhisperState,params: FullParams, samples: &mut Vec<i16>) {
+fn transcribe(ctx: &WhisperContext, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
+
+    // Create a state
+    let mut state = ctx.create_state().expect("failed to create key");
+
     let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
 
     whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
 
     // Run the model.
-    state.full(params, &audio[..]).expect("failed to run model");
+    state.full(params.clone(), &audio[..]).expect("failed to run model");
 
     //eprintln!("{}",state.full_n_segments().expect("failed to get number of segments"));
-    samples.clear();
+    //samples.clear();
 }
 
 
@@ -101,7 +103,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         //writeln!(file, "{}", line).expect("failed to write to file");
     });
 
-    let mut state = ctx.create_state().expect("failed to create state");
 
     //let samples = [0i16; 51200];
     let mut vad = VoiceActivityDetector::builder()
@@ -136,8 +137,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 last_uncommitted_no_speech = None;
             }
             buf.extend(&samples);
-            transcribe(state, params.clone(), &mut buf);
-
+            transcribe(&ctx, &params.clone(), &mut buf);
+            buf.clear();
             num += 1;
             //cur_seconds = 0;
         } else if probability > 0.5 {
@@ -153,7 +154,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if buf.len() > 0 {
                 buf.extend(&samples);
                 last_uncommitted_no_speech = None;
-                transcribe(state, params, &mut buf);
+                transcribe(&ctx, &params.clone(), &mut buf);
+                buf.clear();
                 num += 1;
             }else{ //not committed yet
                 last_uncommitted_no_speech = Some(samples);
@@ -164,7 +166,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     streaming_url(url,target_sample_rate,Box::new(closure_annotated)).await?;
 
     if buf.len() > 0 {
-        transcribe(state, params, &mut buf);
+        transcribe(&ctx, &params.clone(), &mut buf);
+        buf.clear();
         num += 1;
     }
 
