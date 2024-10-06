@@ -1,3 +1,5 @@
+use std::pin::{pin, Pin};
+
 use byteorder::{ByteOrder, LittleEndian};
 use hound::{self, Sample};
 
@@ -9,7 +11,7 @@ use tokio::io::{self, BufReader};
 use tokio_util::{bytes::buf, io::ReaderStream};
 use whisper_rs_test::streaming::streaming_url;
 use tokio_util::{bytes::Bytes};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Operation {
@@ -25,11 +27,9 @@ fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
     vec
 }
 
-fn transcribe(ctx: &WhisperContext, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
+fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
 
     // Create a state
-    let mut state = ctx.create_state().expect("failed to create key");
-
     let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
 
     whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
@@ -41,7 +41,6 @@ fn transcribe(ctx: &WhisperContext, params: &whisper_rs::FullParams, samples: &V
     //samples.clear();
 }
 
-
 /*
 The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encoded audio samples. These may be 8 or 16 bit integers or 32 bit floats.
 
@@ -51,8 +50,8 @@ The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let target_sample_rate: i32 = 16000;
 
-    let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
-    //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
+    //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
+    let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
     //println!("First argument: {}", first_argument);
 
 
@@ -118,6 +117,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let size_for_one_second = target_sample_rate * 2;
     //let cur_seconds = 0;
 
+
+    let mut state = ctx.create_state().expect("failed to create key");
+
+
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
     let closure_annotated = |chunk: Vec<u8>| {
@@ -137,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 last_uncommitted_no_speech = None;
             }
             buf.extend(&samples);
-            transcribe(&ctx, &params.clone(), &mut buf);
+            transcribe(&mut state, &params.clone(), &mut buf);
             buf.clear();
             num += 1;
             //cur_seconds = 0;
@@ -154,7 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if buf.len() > 0 {
                 buf.extend(&samples);
                 last_uncommitted_no_speech = None;
-                transcribe(&ctx, &params.clone(), &mut buf);
+                transcribe(&mut state, &params.clone(), &mut buf);
                 buf.clear();
                 num += 1;
             }else{ //not committed yet
@@ -166,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     streaming_url(url,target_sample_rate,Box::new(closure_annotated)).await?;
 
     if buf.len() > 0 {
-        transcribe(&ctx, &params.clone(), &mut buf);
+        transcribe(&mut state, &params.clone(), &mut buf);
         buf.clear();
         num += 1;
     }
