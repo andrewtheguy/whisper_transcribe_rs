@@ -9,7 +9,7 @@ use voice_activity_detector::{StreamExt as _, VoiceActivityDetector};
 use tokio_stream::{self, StreamExt};
 use tokio::io::{self, BufReader};
 use tokio_util::{bytes::buf, io::ReaderStream};
-use whisper_rs_test::streaming::streaming_url;
+use whisper_rs_test::vad_processor::process_buffer_with_vad;
 use tokio_util::{bytes::Bytes};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
@@ -55,8 +55,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //println!("First argument: {}", first_argument);
 
 
-    let operation = Operation::SplitFiles;
-
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
 
     whisper_rs::install_whisper_log_trampoline();
@@ -67,8 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ctx = WhisperContext::new_with_params(
         "/Users/it3/codes/andrew/transcribe_audio/whisper_models/ggml-large-v3-turbo.bin",
         context_param,
-    )
-        .expect("failed to load model");
+    ).expect("failed to load model");
 
 
 
@@ -103,76 +100,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
 
-    //let samples = [0i16; 51200];
-    let mut vad = VoiceActivityDetector::builder()
-        .sample_rate(target_sample_rate)
-        .chunk_size(512usize)
-        .build()?;
-
-
-    let mut buf:Vec<i16> = Vec::new();
-    let mut num = 1;
-    let max_seconds = 10;
-    let mut last_uncommitted_no_speech: Option<Vec<i16>> = None;
-    //let size_for_one_second = target_sample_rate * 2;
-    //let cur_seconds = 0;
-
-
     let mut state = ctx.create_state().expect("failed to create key");
 
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
-    let closure_annotated = |chunk: Vec<u8>| {
+    let closure_annotated = |buf: &Vec<i16>| {
 
-        eprintln!("Received chunk of size: {}", chunk.len());
-        //assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
-        //cur_seconds += 1;
-        let samples = convert_to_i16_vec(&chunk);
-        //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
-        let probability = vad.predict(samples.clone());
-        let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
-        if buf.len() > 0 && (len_after_samples / target_sample_rate) % max_seconds == 0 {
-            eprintln!("Chunk is more than {} seconds, flushing", max_seconds);
-            //add the last uncommitted no speech first
-            if let Some(last_uncommitted_no_speech2) = &last_uncommitted_no_speech {
-                buf.extend(last_uncommitted_no_speech2);
-                last_uncommitted_no_speech = None;
-            }
-            buf.extend(&samples);
-            transcribe(&mut state, &params.clone(), &mut buf);
-            buf.clear();
-            num += 1;
-            //cur_seconds = 0;
-        } else if probability > 0.5 {
-            eprintln!("Chunk is speech: {}", probability);
-            //add the last uncommitted no speech first
-            if let Some(last_uncommitted_no_speech2) = &last_uncommitted_no_speech {
-                buf.extend(last_uncommitted_no_speech2);
-                last_uncommitted_no_speech = None;
-            }
-            buf.extend(&samples);
-        } else {
-            eprintln!("Chunk is not speech: {}", probability);
-            if buf.len() > 0 {
-                buf.extend(&samples);
-                last_uncommitted_no_speech = None;
-                transcribe(&mut state, &params.clone(), &mut buf);
-                buf.clear();
-                num += 1;
-            }else{ //not committed yet
-                last_uncommitted_no_speech = Some(samples);
-            }
-        }
+            transcribe(&mut state, &params.clone(), &buf);
+
     };
 
-    streaming_url(url,target_sample_rate,Box::new(closure_annotated)).await?;
+    process_buffer_with_vad(url,target_sample_rate,closure_annotated).await?;
 
-    if buf.len() > 0 {
-        transcribe(&mut state, &params.clone(), &mut buf);
-        buf.clear();
-        num += 1;
-    }
 
 
     Ok(())

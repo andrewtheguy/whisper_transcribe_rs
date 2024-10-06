@@ -4,6 +4,7 @@ use std::io::{Read, Cursor};
 use std::convert::TryInto;
 
 pub mod streaming;
+pub mod vad_processor;
 
 use streaming::streaming_url;
 
