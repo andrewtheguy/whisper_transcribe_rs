@@ -79,9 +79,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let samples = convert_to_i16_vec(&chunk);
         //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
         let probability = vad.predict(samples.clone());
-        if buf.len() > 0 && (buf.len() as i32 / target_sample_rate) % max_seconds == 0 {
+        let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
+        if buf.len() > 0 && (len_after_samples / target_sample_rate) % max_seconds == 0 {
             println!("Chunk is more than {} seconds, flushing", max_seconds);
             let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+            buf.extend(&samples);
             sync_buf_to_file(&mut buf, &file_name);
             num += 1;
             //cur_seconds = 0;
@@ -92,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Chunk is not speech: {}", probability);
             if buf.len() > 0 {
                 let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+                buf.extend(&samples);
                 sync_buf_to_file(&mut buf, &file_name);
                 num += 1;
             }
