@@ -12,9 +12,9 @@ use tokio_util::{bytes::Bytes};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 #[derive(Debug, PartialEq, Eq)]
-enum SpeechStatus {
-    Speech,
-    NonSpeech,
+enum Operation {
+    SplitFiles,
+    Transcribe,
 }
 
 fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
@@ -40,23 +40,33 @@ fn sync_buf_to_file(buf: &mut Vec<i16>, file_name: &str) {
     buf.clear();
 }
 
-fn transcribe(ctx: &WhisperContext, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
 
-    // Create a state
-    let mut state = ctx.create_state().expect("failed to create key");
-
-    let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
-
-    whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
-
-    // Run the model.
-    state.full(params.clone(), &audio[..]).expect("failed to run model");
-
-    //eprintln!("{}",state.full_n_segments().expect("failed to get number of segments"));
-
-
-
+struct WhisperCppWrapper<'a> {
+    ctx: WhisperContext,
+    params: FullParams<'a, 'a>,
+    state: whisper_rs::WhisperState,
 }
+
+impl WhisperCppWrapper<'_> {
+    fn new<'a>(ctx: WhisperContext, params: FullParams<'a, 'a>) -> WhisperCppWrapper<'a> {
+        let state = ctx.create_state().expect("failed to create key");
+        WhisperCppWrapper { ctx, params, state }
+    }
+
+    fn transcribe(&'static mut self, samples: &mut Vec<i16>) {
+        let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
+
+        whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
+
+        // Run the model.
+        self.state.full(self.params.clone(), &audio[..]).expect("failed to run model");
+
+        //eprintln!("{}",state.full_n_segments().expect("failed to get number of segments"));
+        samples.clear();
+    }
+    
+}
+
 
 /*
 The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encoded audio samples. These may be 8 or 16 bit integers or 32 bit floats.
@@ -72,77 +82,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //println!("First argument: {}", first_argument);
 
 
+    let operation = Operation::SplitFiles;
 
-    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+    let mut whisper_wrapper: Option<Box<WhisperCppWrapper>> = None;
 
-    whisper_rs::install_whisper_log_trampoline();
-    
-    // Load a context and model.
-    let context_param = WhisperContextParameters::default();
+    if operation == Operation::Transcribe {
+        log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
 
-    // // Enable DTW token level timestamp for known model by using model preset
-    // context_param.dtw_parameters.mode = whisper_rs::DtwMode::ModelPreset {
-    //     model_preset: whisper_rs::DtwModelPreset::BaseEn,
-    // };
+        whisper_rs::install_whisper_log_trampoline();
+        
+        // Load a context and model.
+        let context_param = WhisperContextParameters::default();
 
-    // // Enable DTW token level timestamp for unknown model by providing custom aheads
-    // // see details https://github.com/ggerganov/whisper.cpp/pull/1485#discussion_r1519681143
-    // // values corresponds to ggml-base.en.bin, result will be the same as with DtwModelPreset::BaseEn
-    // let custom_aheads = [
-    //     (3, 1),
-    //     (4, 2),
-    //     (4, 3),
-    //     (4, 7),
-    //     (5, 1),
-    //     (5, 2),
-    //     (5, 4),
-    //     (5, 6),
-    // ]
-    // .map(|(n_text_layer, n_head)| whisper_rs::DtwAhead {
-    //     n_text_layer,
-    //     n_head,
-    // });
-    // context_param.dtw_parameters.mode = whisper_rs::DtwMode::Custom {
-    //     aheads: &custom_aheads,
-    // };
+        let ctx = WhisperContext::new_with_params(
+            "/Users/it3/codes/andrew/transcribe_audio/whisper_models/ggml-large-v3-turbo.bin",
+            context_param,
+        )
+        .expect("failed to load model");
+ 
+        
 
-    let ctx = WhisperContext::new_with_params(
-        "/Users/it3/codes/andrew/transcribe_audio/whisper_models/ggml-large-v3-turbo.bin",
-        context_param,
-    )
-    .expect("failed to load model");
-    
+        // Create a params object for running the model.
+        // The number of past samples to consider defaults to 0.
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
 
-    // Create a params object for running the model.
-    // The number of past samples to consider defaults to 0.
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
+        // Edit params as needed.
+        // Set the number of threads to use to 4.
+        params.set_n_threads(4);
+        // Enable translation.
+        params.set_translate(false);
+        // Set the language to translate to to English.
+        params.set_language(Some("yue"));
+        // Disable anything that prints to stdout.
+        params.set_print_special(false);
+        params.set_debug_mode(false);
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_timestamps(false);
+        // Enable token level timestamps
+        params.set_token_timestamps(true);
+        params.set_n_max_text_ctx(64);
 
-    // Edit params as needed.
-    // Set the number of threads to use to 4.
-    params.set_n_threads(4);
-    // Enable translation.
-    params.set_translate(false);
-    // Set the language to translate to to English.
-    params.set_language(Some("yue"));
-    // Disable anything that prints to stdout.
-    params.set_print_special(false);
-    params.set_debug_mode(false);
-    params.set_print_progress(false);
-    params.set_print_realtime(false);
-    params.set_print_timestamps(false);
-    // Enable token level timestamps
-    params.set_token_timestamps(true);
-    params.set_n_max_text_ctx(64);
+        //let mut file = File::create("transcript.jsonl").expect("failed to create file");
 
-    //let mut file = File::create("transcript.jsonl").expect("failed to create file");
+        params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
+            let line = json!({"start_timestamp":data.start_timestamp, 
+            "end_timestamp":data.end_timestamp, "text":data.text});
+            println!("{}", line);
+            //writeln!(file, "{}", line).expect("failed to write to file");
+        });
 
-    params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
-        let line = json!({"start_timestamp":data.start_timestamp, 
-        "end_timestamp":data.end_timestamp, "text":data.text});
-        println!("{}", line);
-        //writeln!(file, "{}", line).expect("failed to write to file");
-    });
-
+        whisper_wrapper = Some(Box::new(WhisperCppWrapper::new(ctx, params)));
+    }
 
     //let samples = [0i16; 51200];
     let mut vad = VoiceActivityDetector::builder()
@@ -150,22 +141,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .chunk_size(512usize)
         .build()?;
 
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: target_sample_rate as u32,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
+    if operation == Operation::SplitFiles {
 
-    // let mut nonspeech =
-    //     hound::WavWriter::create("tmp/predict.stream.nonspeech.wav", spec)?;
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: target_sample_rate as u32,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+
+        // let mut nonspeech =
+        //     hound::WavWriter::create("tmp/predict.stream.nonspeech.wav", spec)?;
+
+    }
 
     let mut buf:Vec<i16> = Vec::new();    
     let mut num = 1;
     let max_seconds = 10;
+    let mut last_uncommitted_no_speech: Option<Vec<i16>> = None;
     //let size_for_one_second = target_sample_rate * 2;
     //let cur_seconds = 0;
+    
+    let whisper_wrapper_ref = &whisper_wrapper;
     let closure_annotated = |chunk: Vec<u8>| {
+        
         eprintln!("Received chunk of size: {}", chunk.len());
         //assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
         //cur_seconds += 1;
@@ -175,33 +174,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
         if buf.len() > 0 && (len_after_samples / target_sample_rate) % max_seconds == 0 {
             eprintln!("Chunk is more than {} seconds, flushing", max_seconds);
+            //add the last uncommitted no speech first
+            if let Some(last_uncommitted_no_speech2) = &last_uncommitted_no_speech {
+                buf.extend(last_uncommitted_no_speech2);
+                last_uncommitted_no_speech = None;
+            }
             buf.extend(&samples);
-            transcribe(&ctx, &params, &buf);
-            //let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
-            //sync_buf_to_file(&mut buf, &file_name);
+            if operation == Operation::Transcribe {
+                //let t = whisper_wrapper_ref;
+                //whisper_wrapper_ref.unwrap().transcribe( &mut buf);
+            } else if operation == Operation::SplitFiles {
+                let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+                sync_buf_to_file(&mut buf, &file_name);
+            } else{
+                panic!("Unknown operation");
+            }
             num += 1;
             //cur_seconds = 0;
         } else if probability > 0.5 {
             eprintln!("Chunk is speech: {}", probability);
+            //add the last uncommitted no speech first
+            if let Some(last_uncommitted_no_speech2) = &last_uncommitted_no_speech {
+                buf.extend(last_uncommitted_no_speech2);
+                last_uncommitted_no_speech = None;
+            }
             buf.extend(&samples);
         } else {
             eprintln!("Chunk is not speech: {}", probability);
             if buf.len() > 0 {
                 buf.extend(&samples);
-                transcribe(&ctx, &params, &buf);
-                //let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
-                //sync_buf_to_file(&mut buf, &file_name);
+                last_uncommitted_no_speech = None;
+                if operation == Operation::Transcribe {
+                    //let t = whisper_wrapper_ref;
+                    //whisper_wrapper_ref.unwrap().transcribe( &mut buf);
+                } else if operation == Operation::SplitFiles {
+                    let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+                    sync_buf_to_file(&mut buf, &file_name);
+                } else{
+                    panic!("Unknown operation");
+                }
                 num += 1;
+            }else{ //not committed yet
+                last_uncommitted_no_speech = Some(samples);
             }
         }
     };
 
-    streaming_url(url,target_sample_rate,closure_annotated).await?;
+    streaming_url(url,target_sample_rate,Box::new(closure_annotated)).await?;
 
     if buf.len() > 0 {
-        transcribe(&ctx,  &params,  &buf);
-        //let file_name = format!("tmp/predict.stream.speech.noend.wav");
-        //sync_buf_to_file(&mut buf, &file_name);
+        if operation == Operation::Transcribe {
+            //whisper_wrapper.unwrap().transcribe( &mut buf);
+        } else if operation == Operation::SplitFiles {
+            let file_name = format!("tmp/predict.stream.speech.noend.wav");
+            sync_buf_to_file(&mut buf, &file_name);
+        } else{
+            panic!("Unknown operation");
+        }
         num += 1;
     }
 
