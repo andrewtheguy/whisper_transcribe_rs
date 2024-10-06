@@ -40,7 +40,6 @@ fn sync_buf_to_file(buf: &mut Vec<i16>, file_name: &str) {
     buf.clear();
 }
 
-
 struct WhisperCppWrapper<'a> {
     ctx: WhisperContext,
     params: FullParams<'a, 'a>,
@@ -162,7 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let size_for_one_second = target_sample_rate * 2;
     //let cur_seconds = 0;
     
-    let whisper_wrapper_ref = &whisper_wrapper;
+    //let whisper_wrapper_ref = &whisper_wrapper;
     let closure_annotated = |chunk: Vec<u8>| {
         
         eprintln!("Received chunk of size: {}", chunk.len());
@@ -182,7 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             buf.extend(&samples);
             if operation == Operation::Transcribe {
                 //let t = whisper_wrapper_ref;
-                //whisper_wrapper_ref.unwrap().transcribe( &mut buf);
+                whisper_wrapper.unwrap().transcribe( &mut buf);
             } else if operation == Operation::SplitFiles {
                 let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
                 sync_buf_to_file(&mut buf, &file_name);
@@ -206,7 +205,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 last_uncommitted_no_speech = None;
                 if operation == Operation::Transcribe {
                     //let t = whisper_wrapper_ref;
-                    //whisper_wrapper_ref.unwrap().transcribe( &mut buf);
+                    whisper_wrapper.unwrap().transcribe( &mut buf);
                 } else if operation == Operation::SplitFiles {
                     let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
                     sync_buf_to_file(&mut buf, &file_name);
@@ -224,7 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if buf.len() > 0 {
         if operation == Operation::Transcribe {
-            //whisper_wrapper.unwrap().transcribe( &mut buf);
+            whisper_wrapper.unwrap().transcribe( &mut buf);
         } else if operation == Operation::SplitFiles {
             let file_name = format!("tmp/predict.stream.speech.noend.wav");
             sync_buf_to_file(&mut buf, &file_name);
