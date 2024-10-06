@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         //assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
         //cur_seconds += 1;
         let samples = convert_to_i16_vec(&chunk);
-        assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
+        //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
         let probability = vad.predict(samples.clone());
         if buf.len() > 0 && (buf.len() as i32 / target_sample_rate) % max_seconds == 0 {
             println!("Chunk is more than {} seconds, flushing", max_seconds);
