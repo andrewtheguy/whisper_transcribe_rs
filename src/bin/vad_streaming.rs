@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let size_for_one_second = target_sample_rate * 2;
     //let cur_seconds = 0;
     let closure_annotated = |chunk: Vec<u8>| {
-        //eprintln!("Received chunk of size: {}", chunk.len());
+        eprintln!("Received chunk of size: {}", chunk.len());
         assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
         //cur_seconds += 1;
         let samples = convert_to_i16_vec(&chunk);

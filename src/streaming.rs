@@ -35,22 +35,32 @@ where
     let mut reader = BufReader::new(stdout);
     
 
+    // 16 kHz * 2 bytes per sample * 1 channels
+    let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
+    // Buffer for reading 16,000 bytes
+    let mut buffer = vec![0u8; one_second]; 
+    let mut total_bytes_in_buffer = 0;
 
     loop {
-        // 16 kHz * 2 bytes per sample * 1 channels
-        let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
-        // Buffer for reading 16,000 bytes
-        let mut buffer = vec![0u8; one_second]; 
-
-        let n = reader.read_exact(&mut buffer).await?;
+        // Read as much as possible to fill the remaining space in the buffer
+        let bytes_read = reader.read(&mut buffer[total_bytes_in_buffer..]).await?;
         
-        // Process the chunk (n is the number of bytes read)
-        if n == 0 {
+        // If no more bytes are read, we're done
+        if bytes_read == 0 {
+            // If there's any remaining data in the buffer, process it as the last chunk
+            if total_bytes_in_buffer > 0 {
+                f((&buffer[..total_bytes_in_buffer]).to_vec());
+            }
             break;
         }
+        
+        total_bytes_in_buffer += bytes_read;
 
-        // Call the closure with the chunk
-        f(buffer);
+        // If the buffer is full, process it and reset the buffer
+        if total_bytes_in_buffer == buffer.len() {
+            f((&buffer).to_vec());
+            total_bytes_in_buffer = 0; // Reset the buffer
+        }
     }
 
     // Wait for the child process to finish
