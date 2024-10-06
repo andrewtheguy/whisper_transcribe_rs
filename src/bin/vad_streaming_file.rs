@@ -13,12 +13,6 @@ use whisper_rs_test::streaming::streaming_url;
 use tokio_util::{bytes::Bytes};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-#[derive(Debug, PartialEq, Eq)]
-enum Operation {
-    SplitFiles,
-    Transcribe,
-}
-
 fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
     let mut vec = Vec::with_capacity(buf.len() / 2); // Allocate space for i16 values
     for chunk in buf.chunks_exact(2) {
@@ -27,16 +21,19 @@ fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
     vec
 }
 
-fn transcribe(mut state: whisper_rs::WhisperState,params: FullParams, samples: &mut Vec<i16>) {
-    let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
-
-    whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
-
-    // Run the model.
-    state.full(params, &audio[..]).expect("failed to run model");
-
-    //eprintln!("{}",state.full_n_segments().expect("failed to get number of segments"));
-    samples.clear();
+fn sync_buf_to_file(buf: &mut Vec<i16>, file_name: &str) {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 16000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(file_name, spec).unwrap();
+    for sample in &mut *buf {
+        writer.write_sample(*sample).unwrap();
+    }
+    writer.finalize().unwrap();
+    buf.clear();
 }
 
 
@@ -54,54 +51,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //println!("First argument: {}", first_argument);
 
 
-    let operation = Operation::SplitFiles;
-
-    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
-
-    whisper_rs::install_whisper_log_trampoline();
-
-    // Load a context and model.
-    let context_param = WhisperContextParameters::default();
-
-    let ctx = WhisperContext::new_with_params(
-        "/Users/it3/codes/andrew/transcribe_audio/whisper_models/ggml-large-v3-turbo.bin",
-        context_param,
-    )
-        .expect("failed to load model");
-
-
-
-    // Create a params object for running the model.
-    // The number of past samples to consider defaults to 0.
-    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
-
-    // Edit params as needed.
-    // Set the number of threads to use to 4.
-    params.set_n_threads(4);
-    // Enable translation.
-    params.set_translate(false);
-    // Set the language to translate to to English.
-    params.set_language(Some("yue"));
-    // Disable anything that prints to stdout.
-    params.set_print_special(false);
-    params.set_debug_mode(false);
-    params.set_print_progress(false);
-    params.set_print_realtime(false);
-    params.set_print_timestamps(false);
-    // Enable token level timestamps
-    params.set_token_timestamps(true);
-    params.set_n_max_text_ctx(64);
-
-    //let mut file = File::create("transcript.jsonl").expect("failed to create file");
-
-    params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
-        let line = json!({"start_timestamp":data.start_timestamp,
-            "end_timestamp":data.end_timestamp, "text":data.text});
-        println!("{}", line);
-        //writeln!(file, "{}", line).expect("failed to write to file");
-    });
-
-    let mut state = ctx.create_state().expect("failed to create state");
 
     //let samples = [0i16; 51200];
     let mut vad = VoiceActivityDetector::builder()
@@ -110,17 +59,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
 
-    let mut buf:Vec<i16> = Vec::new();
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: target_sample_rate as u32,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+
+  
+
+    let mut buf:Vec<i16> = Vec::new();    
     let mut num = 1;
     let max_seconds = 10;
     let mut last_uncommitted_no_speech: Option<Vec<i16>> = None;
     //let size_for_one_second = target_sample_rate * 2;
     //let cur_seconds = 0;
-
+    
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
     let closure_annotated = |chunk: Vec<u8>| {
-
+        
         eprintln!("Received chunk of size: {}", chunk.len());
         //assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
         //cur_seconds += 1;
@@ -136,7 +94,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 last_uncommitted_no_speech = None;
             }
             buf.extend(&samples);
-            transcribe(state, params.clone(), &mut buf);
+
+            let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+            sync_buf_to_file(&mut buf, &file_name);
 
             num += 1;
             //cur_seconds = 0;
@@ -153,7 +113,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if buf.len() > 0 {
                 buf.extend(&samples);
                 last_uncommitted_no_speech = None;
-                transcribe(state, params, &mut buf);
+
+                let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+                sync_buf_to_file(&mut buf, &file_name);
+      
                 num += 1;
             }else{ //not committed yet
                 last_uncommitted_no_speech = Some(samples);
@@ -164,7 +127,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     streaming_url(url,target_sample_rate,Box::new(closure_annotated)).await?;
 
     if buf.len() > 0 {
-        transcribe(state, params, &mut buf);
+  
+        let file_name = format!("tmp/predict.stream.speech.noend.wav");
+        sync_buf_to_file(&mut buf, &file_name);
+
         num += 1;
     }
 
