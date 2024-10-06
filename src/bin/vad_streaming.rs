@@ -47,7 +47,8 @@ The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let target_sample_rate: i32 = 16000;
 
-    let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
+    let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
+    //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
     //println!("First argument: {}", first_argument);
 
 
