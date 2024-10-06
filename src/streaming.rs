@@ -55,7 +55,9 @@ where
 
     // Wait for the child process to finish
     let status = ffmpeg_process.wait().await?;
-    println!("Process exited with: {}", status);
+    if !status.success() {
+        return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
+    }
 
     Ok(())
 }

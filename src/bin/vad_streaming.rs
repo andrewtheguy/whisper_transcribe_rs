@@ -23,6 +23,20 @@ fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
     vec
 }
 
+fn sync_buf_to_file(buf: &mut Vec<i16>, file_name: &str) {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 16000,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut writer = hound::WavWriter::create(file_name, spec).unwrap();
+    for sample in &mut *buf {
+        writer.write_sample(*sample).unwrap();
+    }
+    writer.finalize().unwrap();
+    buf.clear();
+}
 
 /*
 The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encoded audio samples. These may be 8 or 16 bit integers or 32 bit floats.
@@ -31,7 +45,7 @@ The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let target_sample_rate = 16000;
+    let target_sample_rate: i32 = 16000;
 
     let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
     //println!("First argument: {}", first_argument);
@@ -54,26 +68,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     hound::WavWriter::create("tmp/predict.stream.nonspeech.wav", spec)?;
 
     let mut buf:Vec<i16> = Vec::new();    
-    let mut count = 1;
+    let mut num = 1;
+    let max_seconds = 60;
+    //let size_for_one_second = target_sample_rate * 2;
+    //let cur_seconds = 0;
     let closure_annotated = |chunk: Vec<u8>| {
-        eprintln!("Received chunk of size: {}", chunk.len());
-        //assert!(chunk.len() == target_sample_rate);
+        //eprintln!("Received chunk of size: {}", chunk.len());
+        assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
+        //cur_seconds += 1;
         let samples = convert_to_i16_vec(&chunk);
+        assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
         let probability = vad.predict(samples.clone());
-        if probability > 0.5 {
+        if buf.len() > 0 && (buf.len() as i32 / target_sample_rate) % max_seconds == 0 {
+            println!("Chunk is more than {} seconds, flushing", max_seconds);
+            let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+            sync_buf_to_file(&mut buf, &file_name);
+            num += 1;
+            //cur_seconds = 0;
+        } else if probability > 0.5 {
             println!("Chunk is speech: {}", probability);
             buf.extend(&samples);
         } else {
             println!("Chunk is not speech: {}", probability);
             if buf.len() > 0 {
-                let file_name = format!("tmp/predict.stream.speech.{}.wav", count);
-                let mut speech = hound::WavWriter::create(file_name, spec).unwrap();
-                for item in &buf {
-                    speech.write_sample(*item).unwrap();
-                }
-                count = count + 1;
-                speech.finalize().unwrap();
-                buf.clear();
+                let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+                sync_buf_to_file(&mut buf, &file_name);
+                num += 1;
             }
         }
     };
@@ -82,12 +102,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if buf.len() > 0 {
         let file_name = format!("tmp/predict.stream.speech.noend.wav");
-        let mut speech = hound::WavWriter::create(file_name, spec).unwrap();
-        for sample in &buf {
-            speech.write_sample(*sample).unwrap();
-        }
-        speech.finalize().unwrap();
-        buf.clear();
+        sync_buf_to_file(&mut buf, &file_name);
+        num += 1;
     }
 
 
