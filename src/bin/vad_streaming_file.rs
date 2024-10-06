@@ -14,14 +14,6 @@ use whisper_rs_test::{streaming::streaming_url, vad_processor::process_buffer_wi
 use tokio_util::{bytes::Bytes};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
-    let mut vec = Vec::with_capacity(buf.len() / 2); // Allocate space for i16 values
-    for chunk in buf.chunks_exact(2) {
-        vec.push(LittleEndian::read_i16(chunk));
-    }
-    vec
-}
-
 fn sync_buf_to_file(buf: &Vec<i16>, file_name: &str) {
     let spec = hound::WavSpec {
         channels: 1,

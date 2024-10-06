@@ -29,14 +29,19 @@ where
     //let target_sample_rate: i32 = 16000;
 
     let mut vad = VoiceActivityDetector::builder()
-    .sample_rate(target_sample_rate)
-    .chunk_size(512usize)
-    .build()?;
+        .sample_rate(target_sample_rate)
+        .chunk_size(1024usize)
+        .build()?;
 
     let mut buf:Vec<i16> = Vec::new();
     let mut num = 1;
-    let max_seconds = 10;
+    // should add speech and silence threshold as well
+    let min_seconds = 10.0;
+    let max_seconds = 30.0;
     let mut last_uncommitted_no_speech: Option<Vec<i16>> = None;
+
+    let mut prev_has_speech = false;
+    let mut has_speech = false;
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
@@ -46,41 +51,49 @@ where
         //assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
         //cur_seconds += 1;
         let samples = convert_to_i16_vec(&chunk);
+        eprintln!("sample size: {}", samples.len());
         //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
         let probability = vad.predict(samples.clone());
-        let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
-        if buf.len() > 0 && (len_after_samples / target_sample_rate) % max_seconds == 0 {
-            eprintln!("Chunk is more than {} seconds, flushing", max_seconds);
-            //add the last uncommitted no speech first
-            if let Some(last_uncommitted_no_speech2) = &last_uncommitted_no_speech {
-                buf.extend(last_uncommitted_no_speech2);
-                last_uncommitted_no_speech = None;
-            }
-            buf.extend(&samples);
-            f(&buf);
-            buf.clear();
-            num += 1;
-            //cur_seconds = 0;
-        } else if probability > 0.5 {
+        //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
+        eprintln!("buf.len() {}", buf.len());
+        let seconds = buf.len() as f32 / target_sample_rate as f32;
+        //eprintln!("len_after_samples / target_sample_rate {}",seconds);
+
+        if probability > 0.5 {
             eprintln!("Chunk is speech: {}", probability);
-            //add the last uncommitted no speech first
-            if let Some(last_uncommitted_no_speech2) = &last_uncommitted_no_speech {
-                buf.extend(last_uncommitted_no_speech2);
-                last_uncommitted_no_speech = None;
-            }
-            buf.extend(&samples);
+            has_speech = true;
         } else {
-            eprintln!("Chunk is not speech: {}", probability);
-            if buf.len() > 0 {
+            has_speech = false;
+        }
+
+        if(has_speech) {
+            eprintln!("Chunk is speech: {}", probability);
+            buf.extend(&samples);
+            if seconds > max_seconds {
+                eprintln!("too long, saving and treating has no speech:");
                 buf.extend(&samples);
-                last_uncommitted_no_speech = None;
+                //let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
                 f(&buf);
                 buf.clear();
                 num += 1;
-            }else{ //not committed yet
-                last_uncommitted_no_speech = Some(samples);
+                prev_has_speech = false;
+            }
+        } else if (prev_has_speech && !has_speech) {
+            eprintln!("Chunk is transitioning from speech to not speech: {}", probability);
+            if seconds < min_seconds {
+                eprintln!("too short:");
+                buf.extend(&samples);
+            } else {
+                eprintln!("not too short, saving:");
+                buf.extend(&samples);
+                //let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+                f(&buf);
+                buf.clear();
+                num += 1;
             }
         }
+
+        prev_has_speech = has_speech;
     };
 
     streaming_url(url,target_sample_rate,Box::new(closure_annotated)).await?;

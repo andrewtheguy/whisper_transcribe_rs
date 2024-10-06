@@ -36,9 +36,11 @@ where
     
 
     // 16 kHz * 2 bytes per sample * 1 channels
-    let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
+    //let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
     // Buffer for reading 16,000 bytes
-    let mut buffer = vec![0u8; one_second]; 
+    
+    let frame_size = 1024;
+    let mut buffer = vec![0u8; frame_size*2]; 
     let mut total_bytes_in_buffer = 0;
 
     loop {
