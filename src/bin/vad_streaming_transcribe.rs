@@ -7,6 +7,7 @@ use whisper_rs_test::vad_processor::process_buffer_with_vad;
 
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
+use rusqlite::{params, Connection, Result};
 
 fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
 
@@ -29,6 +30,20 @@ The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Open a connection to the SQLite database (or create it if it doesn't exist)
+    let conn = Connection::open("./tmp/example.db")?;
+
+    // Create a table with a timestamp and text column
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS transcripts (
+                  id INTEGER PRIMARY KEY,
+                  timestamp TEXT NOT NULL,
+                  content TEXT NOT NULL
+          )",
+        [],
+    )?;
+
+
     let target_sample_rate = 16000;
     let sample_size: usize = 1024;
 
@@ -82,7 +97,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let line = json!({"start_timestamp":data.start_timestamp,
             "end_timestamp":data.end_timestamp, "cur_ts": since_the_epoch.as_millis() as f64/1000.0, "text":data.text});
         println!("{}", line);
-        //writeln!(file, "{}", line).expect("failed to write to file");
+
+        conn.execute(
+            "INSERT INTO transcripts (timestamp, content) VALUES (?1, ?2)",
+            params![since_the_epoch.as_millis() as f64/1000.0, data.text],
+        ).unwrap();
+    
     });
 
 
