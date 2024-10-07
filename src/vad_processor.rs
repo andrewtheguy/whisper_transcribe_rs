@@ -260,7 +260,7 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
 
         // only convert to traditional chinese when saving to db
         // output original in jsonl
-        let db_save_test = match language.as_str() {
+        let db_save_text = match language.as_str() {
             "zh" | "yue" => {
                 zhconv(&data.text, Variant::ZhHant)
             },
@@ -272,7 +272,7 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
         if let Some(conn) = &conn {
             conn.execute(
                 "INSERT INTO transcripts (timestamp, content) VALUES (?1, ?2)",
-                params![since_the_epoch.as_millis() as f64/1000.0, db_save_test],
+                params![since_the_epoch.as_millis() as f64/1000.0, db_save_text],
             ).unwrap();
         }
     
