@@ -1,6 +1,6 @@
 
 url = "https://rthkradio1-live.akamaized.net/hls/live/2035313/radio1/master.m3u8"
-database_file_path = "./tmp/example_rthk_1.db"
+database_file_path = "./tmp/example_rthk1.db"
 vad_onnx_model_path="./models/silero_vad.onnx"
 whisper_model_path="/Users/it3/codes/andrew/transcribe_audio/whisper_models/ggml-large-v3-turbo.bin"
 language="yue"
