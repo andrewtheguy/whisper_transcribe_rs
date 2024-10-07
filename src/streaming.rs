@@ -1,14 +1,21 @@
-use std::convert::TryInto;
+use byteorder::{ByteOrder, LittleEndian};
 use tokio::process::{ChildStdout, Command};
 use tokio_stream::StreamExt;
 use tokio_util::{bytes::Bytes, io::ReaderStream};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
+fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
+    let mut vec = Vec::with_capacity(buf.len() / 2); // Allocate space for i16 values
+    for chunk in buf.chunks_exact(2) {
+        vec.push(LittleEndian::read_i16(chunk));
+    }
+    vec
+}
 
-pub async fn streaming_url<F>(input_url: &str, target_sample_rate: i32, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+pub async fn streaming_url<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: FnMut(Vec<u8>),
+    F: FnMut(Vec<i16>),
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -39,8 +46,7 @@ where
     //let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
     // Buffer for reading 16,000 bytes
     
-    let frame_size = 1024;
-    let mut buffer = vec![0u8; frame_size*2]; 
+    let mut buffer = vec![0u8; sample_size*2]; 
     let mut total_bytes_in_buffer = 0;
 
     loop {
@@ -51,7 +57,8 @@ where
         if bytes_read == 0 {
             // If there's any remaining data in the buffer, process it as the last chunk
             if total_bytes_in_buffer > 0 {
-                f((&buffer[..total_bytes_in_buffer]).to_vec());
+                let slice = &buffer[..total_bytes_in_buffer];
+                f(convert_to_i16_vec(slice));
             }
             break;
         }
@@ -60,7 +67,7 @@ where
 
         // If the buffer is full, process it and reset the buffer
         if total_bytes_in_buffer == buffer.len() {
-            f((&buffer).to_vec());
+            f(convert_to_i16_vec(&buffer));
             total_bytes_in_buffer = 0; // Reset the buffer
         }
     }

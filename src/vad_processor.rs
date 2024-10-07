@@ -1,6 +1,5 @@
 use std::pin::{pin, Pin};
 
-use byteorder::{ByteOrder, LittleEndian};
 use hound::{self, Sample};
 
 use log4rs::append::file;
@@ -13,16 +12,7 @@ use crate::streaming::streaming_url;
 use tokio_util::{bytes::Bytes};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-
-fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
-    let mut vec = Vec::with_capacity(buf.len() / 2); // Allocate space for i16 values
-    for chunk in buf.chunks_exact(2) {
-        vec.push(LittleEndian::read_i16(chunk));
-    }
-    vec
-}
-
-pub async fn process_buffer_with_vad<F>(url: &str,target_sample_rate: i32, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+pub async fn process_buffer_with_vad<F>(url: &str,target_sample_rate: i64, sample_size: usize, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(&Vec<i16>),
 {
@@ -30,7 +20,7 @@ where
 
     let mut vad = VoiceActivityDetector::builder()
         .sample_rate(target_sample_rate)
-        .chunk_size(1024usize)
+        .chunk_size(sample_size)
         .build()?;
 
     let mut buf:Vec<i16> = Vec::new();
@@ -45,13 +35,8 @@ where
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
-    let closure_annotated = |chunk: Vec<u8>| {
-
-        eprintln!("Received chunk of size: {}", chunk.len());
-        //assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
-        //cur_seconds += 1;
-        let samples = convert_to_i16_vec(&chunk);
-        eprintln!("sample size: {}", samples.len());
+    let closure_annotated = |samples: Vec<i16>| {
+        eprintln!("Received sample size: {}", samples.len());
         //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
         let probability = vad.predict(samples.clone());
         //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
@@ -96,7 +81,7 @@ where
         prev_has_speech = has_speech;
     };
 
-    streaming_url(url,target_sample_rate,Box::new(closure_annotated)).await?;
+    streaming_url(url,target_sample_rate,sample_size,Box::new(closure_annotated)).await?;
 
     if buf.len() > 0 {
         f(&buf);

@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let samples = [0i16; 51200];
     let vad = VoiceActivityDetector::builder()
         .sample_rate(target_sample_rate)
-        .chunk_size(512usize)
+        .chunk_size(1024usize)
         .build()?;
 
     let chunk_duration = 512.0 / target_sample_rate as f32; // Duration of each chunk in seconds

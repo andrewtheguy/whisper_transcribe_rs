@@ -13,19 +13,6 @@ use whisper_rs_test::vad_processor::process_buffer_with_vad;
 use tokio_util::{bytes::Bytes};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-#[derive(Debug, PartialEq, Eq)]
-enum Operation {
-    SplitFiles,
-    Transcribe,
-}
-
-fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
-    let mut vec = Vec::with_capacity(buf.len() / 2); // Allocate space for i16 values
-    for chunk in buf.chunks_exact(2) {
-        vec.push(LittleEndian::read_i16(chunk));
-    }
-    vec
-}
 
 fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
 
@@ -48,7 +35,8 @@ The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let target_sample_rate: i32 = 16000;
+    let target_sample_rate = 16000;
+    let sample_size: usize = 1024;
 
     //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
     let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
@@ -111,7 +99,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     };
 
-    process_buffer_with_vad(url,target_sample_rate,closure_annotated).await?;
+    process_buffer_with_vad(url,target_sample_rate,sample_size,closure_annotated).await?;
 
 
 

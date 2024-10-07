@@ -36,107 +36,22 @@ The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 
 */
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let target_sample_rate: i32 = 16000;
+    let target_sample_rate = 16000;
+    let sample_size: usize = 1024;
 
     //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
     let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
     //println!("First argument: {}", first_argument);
 
 
-
-    //let samples = [0i16; 51200];
-    let mut vad = VoiceActivityDetector::builder()
-        .sample_rate(target_sample_rate)
-        .chunk_size(512usize)
-        .build()?;
-
-
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: target_sample_rate as u32,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-
-      
-    /*
-
-    let mut buf:Vec<i16> = Vec::new();    
-    let mut num = 1;
-    let max_seconds = 10;
-    let mut last_uncommitted_no_speech: Option<Vec<i16>> = None;
-
-    let closure_annotated = |chunk: Vec<u8>| {
-        
-        eprintln!("Received chunk of size: {}", chunk.len());
-        //assert!(chunk.len() as i32 == target_sample_rate * 2); //make sure it is one second
-        //cur_seconds += 1;
-        let samples = convert_to_i16_vec(&chunk);
-        //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
-        let probability = vad.predict(samples.clone());
-        let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
-        if buf.len() > 0 && (len_after_samples / target_sample_rate) % max_seconds == 0 {
-            eprintln!("Chunk is more than {} seconds, flushing", max_seconds);
-            //add the last uncommitted no speech first
-            if let Some(last_uncommitted_no_speech2) = &last_uncommitted_no_speech {
-                buf.extend(last_uncommitted_no_speech2);
-                last_uncommitted_no_speech = None;
-            }
-            buf.extend(&samples);
-
-            let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
-            sync_buf_to_file(&mut buf, &file_name);
-
-            num += 1;
-            //cur_seconds = 0;
-        } else if probability > 0.5 {
-            eprintln!("Chunk is speech: {}", probability);
-            //add the last uncommitted no speech first
-            if let Some(last_uncommitted_no_speech2) = &last_uncommitted_no_speech {
-                buf.extend(last_uncommitted_no_speech2);
-                last_uncommitted_no_speech = None;
-            }
-            buf.extend(&samples);
-        } else {
-            eprintln!("Chunk is not speech: {}", probability);
-            if buf.len() > 0 {
-                buf.extend(&samples);
-                last_uncommitted_no_speech = None;
-
-                let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
-                sync_buf_to_file(&mut buf, &file_name);
-      
-                num += 1;
-            }else{ //not committed yet
-                last_uncommitted_no_speech = Some(samples);
-            }
-        }
-    };
-
-    streaming_url(url,target_sample_rate,Box::new(closure_annotated)).await?;
-
-    if buf.len() > 0 {
-  
-        let file_name = format!("tmp/predict.stream.speech.noend.wav");
-        sync_buf_to_file(&mut buf, &file_name);
-
-        num += 1;
-    }
-
-
-    */
-
-
-
-
     let mut num = 1;
     let closure_annotated = |buf: &Vec<i16>| {
-        let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
+        let file_name = format!("tmp/predict.stream.speech.{}.wav", format!("{:0>3}",num));
         sync_buf_to_file(&buf, &file_name);
         num += 1;
     };
 
-    process_buffer_with_vad(url,target_sample_rate,closure_annotated).await?;
+    process_buffer_with_vad(url,target_sample_rate,sample_size,closure_annotated).await?;
 
 
 
