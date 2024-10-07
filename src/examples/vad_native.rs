@@ -8,7 +8,7 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use std::process::{Command, Stdio};
 use std::io::{Read, Cursor};
 use std::convert::TryInto;
-use whisper_rs_test::convert_file_to_wave;
+use whisper_transcribe_rs::convert_file_to_wave;
 use voice_activity_detector::{LabeledAudio, IteratorExt, VoiceActivityDetector};
 
 #[derive(Debug, PartialEq, Eq)]

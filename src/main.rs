@@ -2,9 +2,9 @@ use std::env;
 use std::fs;
 use std::process;
 
-use whisper_rs_test::vad_processor::stream_to_file;
-use whisper_rs_test::vad_processor::transcribe_url;
-use whisper_rs_test::config::Config;
+use whisper_transcribe_rs::vad_processor::stream_to_file;
+use whisper_transcribe_rs::vad_processor::transcribe_url;
+use whisper_transcribe_rs::config::Config;
 
 
 #[tokio::main]
