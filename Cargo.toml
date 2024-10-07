@@ -1,5 +1,5 @@
 [package]
-name = "whisper-rs-test"
+name = "whisper_transcribe_rs"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"
