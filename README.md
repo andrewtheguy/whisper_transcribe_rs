@@ -7,6 +7,6 @@ need to install ffmpeg separately
 ```
 cargo run -- config.toml 2> >(rotatelogs -n 5 ./tmp/output.log 1M >&2)
 ```
-- see config*.toml for examples
+- see config*.toml for config examples
 
 - still need improvement on silero vad to include clips before and after speech/no speech transitions
