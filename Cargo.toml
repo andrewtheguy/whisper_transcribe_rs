@@ -26,3 +26,4 @@ rand = "0.8.5"
 # is why it is not a default feature -- it could become hard to disable.
 rusqlite = { version = "0.32.0", features = ["bundled"] }
 serde = "1.0.210"
+toml = "0.8.19"

@@ -1,12 +1,12 @@
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-struct Config {
-    url: String,
-    database_file_path: Option<String>,
-    onnx_model_path: String,
-    whisper_model_path: String,
-    language: String,
+pub struct Config {
+    pub url: String,
+    pub database_file_path: Option<String>,
+    pub vad_onnx_model_path: String,
+    pub whisper_model_path: String,
+    pub language: String,
    //port: Option<u16>,
    //keys: Keys,
 }
