@@ -13,6 +13,20 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 
 use rand::Rng;
 
+enum State {
+    NoSpeech,
+    HasSpeech,
+}
+
+impl State {
+    fn convert(has_speech: bool) -> State {
+        match has_speech {
+            true => State::HasSpeech,
+            _ => State::NoSpeech,
+        }
+    }
+}
+
 pub async fn process_buffer_with_vad<F>(url: &str,target_sample_rate: i64, sample_size: usize, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(&Vec<i16>),
@@ -38,7 +52,14 @@ where
     let mut last_uncommitted_no_speech: Option<Vec<i16>> = None;
 
     let mut prev_has_speech = false;
+
     let mut has_speech = false;
+
+    let mut prev_sample:Option<Vec<i16>> = None;
+
+    //let mut has_speech_time = 0.0;
+
+    let mut prev_state = State::NoSpeech;
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
@@ -47,9 +68,9 @@ where
         //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
         //let sample2 = samples.clone();
         //silero.reset();
-        let mut rng = rand::thread_rng();
-        let probability: f64 = rng.gen();
-        //let probability = silero.calc_level(&sample2).unwrap();
+        //let mut rng = rand::thread_rng();
+        //let probability: f64 = rng.gen();
+        let probability = silero.calc_level(&samples).unwrap();
         //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
         eprintln!("buf.len() {}", buf.len());
         let seconds = buf.len() as f32 / target_sample_rate as f32;
@@ -62,31 +83,39 @@ where
             has_speech = false;
         }
 
-        buf.extend(&samples);
-        if(has_speech) {
-            eprintln!("Chunk is speech: {}", probability);
-            if seconds > max_seconds {
-                eprintln!("too long, saving and treating has no speech:");
-                //let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
-                f(&buf);
-                buf.clear();
-                num += 1;
-                prev_has_speech = false;
-            }
-        } else if (prev_has_speech && !has_speech) {
-            eprintln!("Chunk is transitioning from speech to not speech: {}", probability);
-            if seconds < min_seconds {
-                eprintln!("too short:");
-            } else {
-                eprintln!("not too short, saving:");
-                //let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
-                f(&buf);
-                buf.clear();
-                num += 1;
+        match prev_state {
+            State::NoSpeech => {
+                if has_speech {
+                    eprintln!("Transitioning from no speech to speech");
+                    // add previous sample if it exists
+                    if let Some(prev_sample2) = &prev_sample {
+                        buf.extend(prev_sample2);
+                    }
+                    // start to extend the buffer
+                    buf.extend(&samples);
+                } else {
+                    eprintln!("Still No Speech");
+                }
+            },
+            State::HasSpeech => {
+                if has_speech {
+                    eprintln!("Continue to has speech");
+                    // continue to extend the buffer
+                    buf.extend(&samples);
+                } else {
+                    eprintln!("Transitioning from speech to no speech");
+                    buf.extend(&samples);
+                    //save the buffer if not empty
+                    f(&buf);
+                    buf.clear();
+                    num += 1;
+                }
             }
         }
 
-        prev_has_speech = has_speech;
+        prev_state = State::convert(has_speech);
+        
+        prev_sample = Some(samples);
     };
 
     streaming_url(url,target_sample_rate,sample_size,Box::new(closure_annotated)).await?;
