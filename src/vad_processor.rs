@@ -4,13 +4,14 @@ use hound::{self, Sample};
 
 use log4rs::append::file;
 use serde_json::json;
-use voice_activity_detector::{StreamExt as _, VoiceActivityDetector};
 use tokio_stream::{self, StreamExt};
 use tokio::io::{self, BufReader};
 use tokio_util::{bytes::buf, io::ReaderStream};
-use crate::streaming::streaming_url;
+use crate::{silero, streaming::streaming_url, utils};
 use tokio_util::{bytes::Bytes};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
+
+use rand::Rng;
 
 pub async fn process_buffer_with_vad<F>(url: &str,target_sample_rate: i64, sample_size: usize, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
@@ -18,10 +19,16 @@ where
 {
     //let target_sample_rate: i32 = 16000;
 
-    let mut vad = VoiceActivityDetector::builder()
-        .sample_rate(target_sample_rate)
-        .chunk_size(sample_size)
-        .build()?;
+    let model_path = std::env::var("SILERO_MODEL_PATH")
+        .unwrap_or_else(|_| String::from("./models/silero_vad.onnx"));
+
+    let sample_rate = match target_sample_rate {
+        8000 => utils::SampleRate::EightkHz,
+        16000 => utils::SampleRate::SixteenkHz,
+        _ => panic!("Unsupported sample rate. Expect 8 kHz or 16 kHz."),
+    };
+
+    let mut silero = silero::Silero::new(sample_rate, model_path).unwrap();
 
     let mut buf:Vec<i16> = Vec::new();
     let mut num = 1;
@@ -38,7 +45,11 @@ where
     let closure_annotated = |samples: Vec<i16>| {
         eprintln!("Received sample size: {}", samples.len());
         //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
-        let probability = vad.predict(samples.clone());
+        //let sample2 = samples.clone();
+        //silero.reset();
+        let mut rng = rand::thread_rng();
+        let probability: f64 = rng.gen();
+        //let probability = silero.calc_level(&sample2).unwrap();
         //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
         eprintln!("buf.len() {}", buf.len());
         let seconds = buf.len() as f32 / target_sample_rate as f32;

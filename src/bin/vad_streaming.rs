@@ -5,7 +5,6 @@ use hound::{self, Sample};
 
 use log4rs::append::file;
 use serde_json::json;
-use voice_activity_detector::{StreamExt as _, VoiceActivityDetector};
 use tokio_stream::{self, StreamExt};
 use tokio::io::{self, BufReader};
 use tokio_util::{bytes::buf, io::ReaderStream};
@@ -38,8 +37,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let target_sample_rate = 16000;
     let sample_size: usize = 1024;
 
-    //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
-    let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
+    let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
+    //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
     //println!("First argument: {}", first_argument);
 
 

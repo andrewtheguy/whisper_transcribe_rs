@@ -6,7 +6,6 @@ use hound::{self, Sample};
 
 use log4rs::append::file;
 use serde_json::json;
-use voice_activity_detector::{StreamExt as _, VoiceActivityDetector};
 use tokio_stream::{self, StreamExt};
 use tokio::io::{self, BufReader};
 use tokio_util::{bytes::buf, io::ReaderStream};
