@@ -62,12 +62,11 @@ where
             has_speech = false;
         }
 
+        buf.extend(&samples);
         if(has_speech) {
             eprintln!("Chunk is speech: {}", probability);
-            buf.extend(&samples);
             if seconds > max_seconds {
                 eprintln!("too long, saving and treating has no speech:");
-                buf.extend(&samples);
                 //let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
                 f(&buf);
                 buf.clear();
@@ -78,10 +77,8 @@ where
             eprintln!("Chunk is transitioning from speech to not speech: {}", probability);
             if seconds < min_seconds {
                 eprintln!("too short:");
-                buf.extend(&samples);
             } else {
                 eprintln!("not too short, saving:");
-                buf.extend(&samples);
                 //let file_name = format!("tmp/predict.stream.speech.{}.wav", num);
                 f(&buf);
                 buf.clear();
