@@ -202,7 +202,7 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
         conn2.execute(
             "CREATE TABLE IF NOT EXISTS transcripts (
                     id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL,
+                    timestamp datetime NOT NULL,
                     content TEXT NOT NULL
             )",
             [],
