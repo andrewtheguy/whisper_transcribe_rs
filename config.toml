@@ -4,3 +4,4 @@ database_file_path = "./tmp/example.db"
 vad_onnx_model_path="./models/silero_vad.onnx"
 whisper_model_path="/Users/it3/codes/andrew/transcribe_audio/whisper_models/ggml-large-v3-turbo.bin"
 language="yue"
+operation = "transcribe" # or save_to_file
