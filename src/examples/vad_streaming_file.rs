@@ -13,19 +13,6 @@ use whisper_rs_test::{streaming::streaming_url, vad_processor::process_buffer_wi
 use tokio_util::{bytes::Bytes};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-fn sync_buf_to_file(buf: &Vec<i16>, file_name: &str) {
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: 16000,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-    let mut writer = hound::WavWriter::create(file_name, spec).unwrap();
-    for sample in buf {
-        writer.write_sample(*sample).unwrap();
-    }
-    writer.finalize().unwrap();
-}
 
 
 /*

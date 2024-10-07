@@ -1535,6 +1535,7 @@ dependencies = [
  "ort",
  "rand",
  "rusqlite",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
