@@ -1,15 +1,10 @@
-use std::pin::{pin, Pin};
-
-use byteorder::{ByteOrder, LittleEndian};
 use hound::{self, Sample};
 
-use log4rs::append::file;
+use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::json;
 use tokio_stream::{self, StreamExt};
-use tokio::io::{self, BufReader};
-use tokio_util::{bytes::buf, io::ReaderStream};
 use whisper_rs_test::vad_processor::process_buffer_with_vad;
-use tokio_util::{bytes::Bytes};
+
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 
@@ -80,8 +75,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let mut file = File::create("transcript.jsonl").expect("failed to create file");
 
     params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
         let line = json!({"start_timestamp":data.start_timestamp,
-            "end_timestamp":data.end_timestamp, "text":data.text});
+            "end_timestamp":data.end_timestamp, "cur_ts": since_the_epoch.as_millis() as f64/1000.0, "text":data.text});
         println!("{}", line);
         //writeln!(file, "{}", line).expect("failed to write to file");
     });

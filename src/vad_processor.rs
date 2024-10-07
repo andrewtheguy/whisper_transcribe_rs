@@ -43,7 +43,7 @@ where
     let mut buf:Vec<i16> = Vec::new();
     let mut num = 1;
 
-    let min_speech_duration_seconds = 1.0;
+    let min_speech_duration_seconds = 3.0;
 
     let mut has_speech = false;
 
