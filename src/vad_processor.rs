@@ -1,9 +1,5 @@
-use std::pin::{pin, Pin};
-
 use hound::{self, Sample};
 
-use log4rs::append::file;
-use serde_json::json;
 use tokio_stream::{self, StreamExt};
 use tokio::io::{self, BufReader};
 use tokio_util::{bytes::buf, io::ReaderStream};
@@ -46,12 +42,8 @@ where
 
     let mut buf:Vec<i16> = Vec::new();
     let mut num = 1;
-    // should add speech and silence threshold as well
-    let min_seconds = 10.0;
-    let max_seconds = 30.0;
-    let mut last_uncommitted_no_speech: Option<Vec<i16>> = None;
 
-    let mut prev_has_speech = false;
+    let min_speech_duration_seconds = 1.0;
 
     let mut has_speech = false;
 
@@ -98,6 +90,10 @@ where
                 }
             },
             State::HasSpeech => {
+                if seconds < min_speech_duration_seconds {
+                    eprintln!("override to Continue to has speech because seconds < min_seconds {}", seconds);
+                    has_speech = true;
+                }
                 if has_speech {
                     eprintln!("Continue to has speech");
                     // continue to extend the buffer
