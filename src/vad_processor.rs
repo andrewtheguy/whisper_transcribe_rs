@@ -8,6 +8,8 @@ use serde_json::json;
 
 use rusqlite::{params, Connection, Result};
 
+use zhconv::{zhconv, Variant};
+
 enum State {
     NoSpeech,
     HasSpeech,
@@ -244,6 +246,7 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
 
     //let mut file = File::create("transcript.jsonl").expect("failed to create file");
 
+    let language = config.language.clone();
     params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
 
         let start = SystemTime::now();
@@ -255,10 +258,21 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
             "end_timestamp":data.end_timestamp, "cur_ts": since_the_epoch.as_millis() as f64/1000.0, "text":data.text});
         println!("{}", line);
 
+        // only convert to traditional chinese when saving to db
+        // output original in jsonl
+        let db_save_test = match language.as_str() {
+            "zh" | "yue" => {
+                zhconv(&data.text, Variant::ZhHant)
+            },
+            _ => {
+                data.text
+            }
+        };
+
         if let Some(conn) = &conn {
             conn.execute(
                 "INSERT INTO transcripts (timestamp, content) VALUES (?1, ?2)",
-                params![since_the_epoch.as_millis() as f64/1000.0, data.text],
+                params![since_the_epoch.as_millis() as f64/1000.0, db_save_test],
             ).unwrap();
         }
     
