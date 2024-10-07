@@ -5,9 +5,3 @@ create a config toml file
 ```
 cargo run -- config.toml 2> >(rotatelogs -n 5 ./tmp/output.log 1M >&2)
 ```
-
-## test saving to wave file for debugging
-
-```
-cargo run --bin vad_streaming_file
-```

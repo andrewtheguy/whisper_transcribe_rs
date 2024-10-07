@@ -23,6 +23,8 @@ where
     // Run ffmpeg to get raw PCM (s16le) data at 16kHz
     let mut ffmpeg_process = Command::new("ffmpeg")
         .args(&[
+            "-reconnect", "1", 
+            "-reconnect_streamed", "1",
             "-i", input_url,      // Input url
             "-f", "s16le",         // Output format: raw PCM, signed 16-bit little-endian
             "-acodec", "pcm_s16le",// Audio codec: PCM 16-bit signed little-endian
