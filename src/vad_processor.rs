@@ -114,7 +114,7 @@ where
         prev_sample = Some(samples);
     };
 
-    streaming_url(url,target_sample_rate,sample_size,Box::new(closure_annotated)).await?;
+    streaming_url(url,target_sample_rate,sample_size,closure_annotated).await?;
 
     if buf.len() > 0 {
         f(&buf);
