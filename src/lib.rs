@@ -3,6 +3,11 @@ use std::process::{Command, Stdio};
 use std::io::{Read, Cursor};
 use std::convert::TryInto;
 
+pub mod streaming;
+pub mod silero;
+pub mod utils;
+pub mod vad_processor;
+pub mod config;
 
 pub fn convert_file_to_wave(input_file: &str,target_sample_rate: i32) -> Result<Vec<i16>, Box<dyn std::error::Error>> {
     // Path to the input file
