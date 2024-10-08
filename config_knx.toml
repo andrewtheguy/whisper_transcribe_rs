@@ -2,7 +2,5 @@
 # https://github.com/junguler/m3u-radio-music-playlists/blob/403134e0e43c7cf16d76d33278197b9fda7cf57e/radio_station_usa.fm/news.m3u#L6
 url = "https://live.amperwave.net/manifest/audacy-knxamaac-imc"
 database_file_path = "./tmp/example_knx.db"
-vad_onnx_model_path="./models/silero_vad.onnx"
-whisper_model_path="/Users/it3/codes/andrew/transcribe_audio/whisper_models/ggml-large-v3-turbo.bin"
 language="en"
 operation = "transcribe" # or save_to_file

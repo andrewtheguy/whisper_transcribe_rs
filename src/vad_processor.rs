@@ -1,9 +1,13 @@
 use hound::{self};
+use log4rs::append::file;
+use reqwest::get;
+use tempfile::NamedTempFile;
+use url::Url;
 
 use crate::{config::Config, silero::{self, Silero}, streaming::streaming_url, utils};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{fs::{self, File}, io::{self, Write}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
 use rusqlite::{params, Connection, Result};
@@ -159,9 +163,54 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
     //samples.clear();
 }
 
-fn get_silero(config: &Config) -> silero::Silero {
+fn get_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    
+    // Parse the URL
+    let parsed_url = Url::parse(url)?;
+    let path = parsed_url.path();
+    if let Some(filename) = Path::new(path).file_name(){
+        Ok(filename.to_str().unwrap().to_string())
+    }else{
+        Err("Failed to get filename from URL".into())
+    }
+}
 
-    let model_path = config.vad_onnx_model_path.as_str();
+async fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
+
+    // Create a temporary file. This file will be automatically deleted when dropped.
+    let mut temp_file = NamedTempFile::new()?;
+
+    // Download the file
+    let mut response = get(url).await?;
+    
+    if response.status().is_success() {
+
+        // Stream the response body and write it to the file chunk by chunk
+        while let Some(chunk) = response.chunk().await? {
+            temp_file.write_all(&chunk)?;
+        }
+        // Move the temp file to the destination only if the download was successful.
+        temp_file.persist(destination)?; // Moves the file to the final destination
+        println!("File downloaded and moved to: {}", destination);
+    } else {
+        println!("Failed to download the file. Status: {}", response.status());
+    }
+
+    Ok(())
+}
+
+async fn get_silero() -> silero::Silero {
+
+    let download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1/src/silero_vad/data/silero_vad.onnx";
+
+    let model_local_directory = dirs::cache_dir().unwrap().join("whisper_transcribe_rs");
+    fs::create_dir_all(&model_local_directory).unwrap();
+    let file_name = get_filename_from_url(download_url).unwrap();
+    let model_path = model_local_directory.join(file_name);
+    if !model_path.exists() {
+        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
+        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).await.unwrap();
+    }
 
     let sample_rate = match TARGET_SAMPLE_RATE {
         8000 => utils::SampleRate::EightkHz,
@@ -187,7 +236,7 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
         num += 1;
     };
 
-    let mut silero = get_silero(&config);
+    let mut silero = get_silero().await;
 
     process_buffer_with_vad(&mut silero,url,closure_annotated).await?;
 
@@ -216,8 +265,19 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
     // Load a context and model.
     let context_param = WhisperContextParameters::default();
 
+    let download_url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/4496f29dabb6f37d8e6c45c3ec89ccbe66a832ea/ggml-large-v3-turbo.bin?download=true";
+
+    let model_local_directory = dirs::cache_dir().unwrap().join("whisper_transcribe_rs");
+    fs::create_dir_all(&model_local_directory).unwrap();
+    let file_name = get_filename_from_url(download_url).unwrap();
+    let model_path = model_local_directory.join(file_name);
+    if !model_path.exists() {
+        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
+        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).await.unwrap();
+    }
+
     let ctx = WhisperContext::new_with_params(
-        config.whisper_model_path.as_str(),
+        model_path.to_str().unwrap(),
         context_param,
     ).expect("failed to load model");
 
@@ -290,7 +350,7 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
 
     };
 
-    let mut silero = get_silero(&config);
+    let mut silero = get_silero().await;
 
     process_buffer_with_vad(&mut silero,url,closure_annotated).await?;
         
