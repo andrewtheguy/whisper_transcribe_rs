@@ -13,43 +13,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --release
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release
 
-    # Upload build artifacts (for example, `dist/` directory)
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: linux
-        path: target/release/whisper_transcribe_rs
+      # Upload build artifacts (for example, `dist/` directory)
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: target/release/whisper_transcribe_rs
 
   build-linux-arm:
 
     runs-on: ubuntu-latest
 
     steps:
-        -   name: QEMU install
-            uses: docker/setup-qemu-action@v3
+      -   name: QEMU install
+          uses: docker/setup-qemu-action@v3
 
-        -   name: Install Docker Buildx
-            uses: docker/setup-buildx-action@v3
+      -   name: Install Docker Buildx
+          uses: docker/setup-buildx-action@v3
 
-        - name: Build2
-          uses: docker/build-push-action@v6
+      - name: Build2
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/arm64
+          file: Dockerfile
+          push: false
+          tags: user/app:latest
+          outputs: type=local,dest=target/linux_arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Upload build artifacts (for example, `dist/` directory)
+      -   name: Upload artifacts
+          uses: actions/upload-artifact@v4
           with:
-            platforms: linux/arm64
-            file: Dockerfile
-            push: false
-            tags: user/app:latest
-            outputs: type=local,dest=target/linux_arm64
-        # Upload build artifacts (for example, `dist/` directory)
-        -   name: Upload artifacts
-            uses: actions/upload-artifact@v4
-            with:
-                name: linux
-                path: target/linux_arm64/whisper_transcribe_rs
-            
+            name: linux
+            path: target/linux_arm64/whisper_transcribe_rs
+
 
   build-macos:
     runs-on: macos-latest
@@ -58,7 +60,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: cargo build --release
-  
+
       # Upload build artifacts (for example, `dist/` directory)
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
