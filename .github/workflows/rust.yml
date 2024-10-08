@@ -24,6 +24,23 @@ jobs:
         name: linux
         path: target/release/whisper_transcribe_rs
 
+  build-linux-arm:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: rustup target add aarch64-unknown-linux-gnu && cargo build --release --target aarch64-unknown-linux-gnu
+
+    # Upload build artifacts (for example, `dist/` directory)
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux
+        path: target/release/whisper_transcribe_rs
+        
+
   build-macos:
     runs-on: macos-latest
 
