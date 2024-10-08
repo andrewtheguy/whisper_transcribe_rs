@@ -1,11 +1,6 @@
-use std::default;
 use std::env;
 use std::fs;
 use std::process;
-use std::process::exit;
-
-use serde::de;
-use whisper_transcribe_rs::config;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
 use whisper_transcribe_rs::config::Config;
@@ -15,7 +10,7 @@ use std::path::PathBuf;
 use log4rs;
 use serde_yaml;
 
-use clap::{arg, command, value_parser, ArgAction, Command};
+use clap::{arg, command, value_parser};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
