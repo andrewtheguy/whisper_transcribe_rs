@@ -345,7 +345,7 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
     //let whisper_wrapper_ref2 = &whisper_wrapper;
     let closure_annotated = |buf: &Vec<i16>| {
 
-            transcribe(&mut state, &params.clone(), &buf);
+            transcribe(&mut state, &params, &buf);
 
     };
 
