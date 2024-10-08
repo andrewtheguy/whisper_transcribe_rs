@@ -42,6 +42,7 @@ jobs:
           uses: docker/build-push-action@v6
           with:
             platforms: linux/arm64
+            file: Dockerfile
             push: false
             tags: user/app:latest
             outputs: type=local,dest=target/linux_arm64
