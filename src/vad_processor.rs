@@ -330,7 +330,7 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
 
         if let Some(conn) = &conn {
             conn.execute(
-                "INSERT INTO transcripts (timestamp, content) VALUES (?1, ?2)",
+                "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
                 params![since_the_epoch.as_millis() as f64/1000.0, db_save_text],
             ).unwrap();
         }
