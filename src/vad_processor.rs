@@ -6,7 +6,7 @@ use url::Url;
 use crate::{config::Config, silero::{self, Silero}, streaming::streaming_url, utils};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::{fs::{self}, io::{Write}, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use std::{fs::{self}, io::Write, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
 use rusqlite::{params, Connection, Result};
