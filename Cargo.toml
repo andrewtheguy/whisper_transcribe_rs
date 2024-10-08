@@ -43,7 +43,7 @@ features = [
   "whisper-cpp-log"
 ]
 
-[target.'cfg(macos)'.dependencies.whisper-rs]
+[target.'cfg(target_os = "macos")'.dependencies.whisper-rs]
 git = "https://github.com/tazz4843/whisper-rs"
 version = "0.13.0"
 default-features = false
