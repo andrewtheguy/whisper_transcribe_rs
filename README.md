@@ -17,3 +17,9 @@ cargo run -- config.toml 2> NUL
 - still need improvement on silero vad to include clips before and after speech/no speech transitions
 
 - need to convert eprintln! to log!
+
+build linux arm binary:
+
+```
+DOCKER_BUILDKIT=1 docker build --platform linux/arm64 -o target/linux_arm64 .
+```
