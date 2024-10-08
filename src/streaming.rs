@@ -22,9 +22,9 @@ where
     let mut ffmpeg_process = Command::new("ffmpeg")
         .args(&[
             //-drop_pkts_on_overflow 1 
+            "-i", input_url,      // Input url
             "-attempt_recovery", "1",
             "-recovery_wait_time", "1",
-            "-i", input_url,      // Input url
             "-f", "s16le",         // Output format: raw PCM, signed 16-bit little-endian
             "-acodec", "pcm_s16le",// Audio codec: PCM 16-bit signed little-endian
             "-ac", "1",            // Number of audio channels (1 = mono)
