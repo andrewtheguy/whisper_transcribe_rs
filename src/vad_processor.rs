@@ -190,7 +190,7 @@ async fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), B
         }
         // Move the temp file to the destination only if the download was successful.
         temp_file.persist(destination)?; // Moves the file to the final destination
-        println!("File downloaded and moved to: {}", destination);
+        eprintln!("File downloaded and moved to: {}", destination);
     } else {
         println!("Failed to download the file. Status: {}", response.status());
     }
