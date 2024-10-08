@@ -242,7 +242,7 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn transcribe_url(config: Config,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     let url = config.url.as_str();
     let mut conn: Option<Connection> = None;
@@ -264,7 +264,7 @@ pub async fn transcribe_url(config: Config) -> Result<(), Box<dyn std::error::Er
     // Load a context and model.
     let context_param = WhisperContextParameters::default();
 
-    let download_url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/4496f29dabb6f37d8e6c45c3ec89ccbe66a832ea/ggml-large-v3-turbo.bin?download=true";
+    let download_url = model_download_url;
 
     let model_local_directory = dirs::cache_dir().unwrap().join("whisper_transcribe_rs");
     fs::create_dir_all(&model_local_directory).unwrap();
