@@ -38,6 +38,13 @@ jobs:
         -   name: build
             run: |
                 DOCKER_BUILDKIT=1 docker build --platform linux/arm64 -o target/linux_arm64 .
+        - name: Build2
+          uses: docker/build-push-action@v6
+          with:
+            platforms: linux/arm64
+            push: false
+            tags: user/app:latest
+            outputs: type=local,dest=target/linux_arm64
         # Upload build artifacts (for example, `dist/` directory)
         -   name: Upload artifacts
             uses: actions/upload-artifact@v4
