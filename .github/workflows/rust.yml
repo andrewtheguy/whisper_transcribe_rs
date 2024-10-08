@@ -1,0 +1,57 @@
+name: build
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-linux:
+    #needs: [build-macos, build-linux, build-windows]
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build
+      run: cargo build --release
+
+    # Upload build artifacts (for example, `dist/` directory)
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux
+        path: target/release/whisper_transcribe_rs
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release
+  
+      # Upload build artifacts (for example, `dist/` directory)
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: target/release/whisper_transcribe_rs
+  
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release
+
+      # Upload build artifacts (for example, `dist/` directory)
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: target/release/whisper_transcribe_rs.exe
+        
