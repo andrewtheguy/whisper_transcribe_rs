@@ -10,7 +10,7 @@ cargo run -- config.toml 2> >(rotatelogs -n 5 ./tmp/output.log 1M >&2)
 
 windows:
 ```
-cargo run -- config.toml 2>&1 | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ..\rotatelogs.exe -n 5 ./tmp/output.log 1M
+cargo run -- config.toml 2>&1 | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | path-to\rotatelogs.exe -n 5 ./tmp/output.log 1M
 ```
 - see config*.toml for config examples
 
