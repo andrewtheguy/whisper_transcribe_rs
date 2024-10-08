@@ -1,5 +1,4 @@
 use hound::{self};
-use log4rs::append::file;
 use reqwest::get;
 use tempfile::NamedTempFile;
 use url::Url;
@@ -7,7 +6,7 @@ use url::Url;
 use crate::{config::Config, silero::{self, Silero}, streaming::streaming_url, utils};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::{fs::{self, File}, io::{self, Write}, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use std::{fs::{self}, io::{Write}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
 use rusqlite::{params, Connection, Result};
@@ -46,7 +45,7 @@ where
 
 
     let mut buf:Vec<i16> = Vec::new();
-    let mut num = 1;
+    //let mut num = 1;
 
     let min_speech_duration_seconds = 3.0;
 
@@ -109,7 +108,7 @@ where
                     //save the buffer if not empty
                     f(&buf);
                     buf.clear();
-                    num += 1;
+                    //num += 1;
                 }
             }
         }
@@ -124,7 +123,7 @@ where
     if buf.len() > 0 {
         f(&buf);
         buf.clear();
-        num += 1;
+        //num += 1;
     }
 
 
@@ -218,7 +217,7 @@ async fn get_silero() -> silero::Silero {
         _ => panic!("Unsupported sample rate. Expect 8 kHz or 16 kHz."),
     };
 
-    let mut silero = silero::Silero::new(sample_rate, model_path).unwrap();
+    let silero = silero::Silero::new(sample_rate, model_path).unwrap();
     silero
 }
 
