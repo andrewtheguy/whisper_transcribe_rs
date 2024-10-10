@@ -4,12 +4,12 @@ use std::io::Read;
 use std::convert::TryInto;
 
 pub mod streaming;
-pub mod silero;
-pub mod utils;
+pub mod sample;
 pub mod vad_processor;
 pub mod config;
+mod vad;
 
-pub fn convert_file_to_wave(input_file: &str,target_sample_rate: i32) -> Result<Vec<i16>, Box<dyn std::error::Error>> {
+pub fn convert_file_to_wave(input_file: &str, target_sample_rate: i32) -> Result<Vec<i16>, Box<dyn std::error::Error>> {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
 
