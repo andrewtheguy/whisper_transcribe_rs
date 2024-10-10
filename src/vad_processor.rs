@@ -74,7 +74,7 @@ where
         //silero.reset();
         //let mut rng = rand::thread_rng();
         //let probability: f64 = rng.gen();
-        let probability = silero.calc_level(&samples).unwrap();
+        let probability = model.predict(samples.clone());
         //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
         eprintln!("buf.len() {}", buf.len());
         let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
