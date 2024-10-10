@@ -2,11 +2,12 @@ use hound::{self};
 use reqwest::get;
 use tempfile::NamedTempFile;
 use url::Url;
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::{config::Config, silero::{self, Silero}, streaming::streaming_url, utils};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::{fs::{self}, io::Write, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use std::{collections::VecDeque, fs::{self}, io::Write, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
 use rusqlite::{params, Connection, Result};
@@ -51,11 +52,15 @@ where
 
     let mut has_speech = false;
 
-    let mut prev_sample:Option<Vec<i16>> = None;
+    //let mut prev_sample:Option<Vec<i16>> = None;
 
     //let mut has_speech_time = 0.0;
 
     let mut prev_state = State::NoSpeech;
+
+    // one second
+    let mut prev_samples = AllocRingBuffer::<i16>::new(SAMPLE_SIZE as usize);
+
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
@@ -79,14 +84,17 @@ where
             has_speech = false;
         }
 
+        assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
         match prev_state {
             State::NoSpeech => {
                 if has_speech {
                     eprintln!("Transitioning from no speech to speech");
                     // add previous sample if it exists
-                    if let Some(prev_sample2) = &prev_sample {
-                        buf.extend(prev_sample2);
-                    }
+                    //if let Some(prev_sample2) = &prev_sample {
+                        buf.extend(&prev_samples);
+                        prev_samples.clear();
+                        assert_eq!(prev_samples.len(),0);
+                    //}
                     // start to extend the buffer
                     buf.extend(&samples);
                 } else {
@@ -108,14 +116,14 @@ where
                     //save the buffer if not empty
                     f(&buf);
                     buf.clear();
-                    //num += 1;
+                    //prev_samples.clear();
                 }
             }
         }
 
         prev_state = State::convert(has_speech);
         
-        prev_sample = Some(samples);
+        prev_samples.extend(samples.clone());
     };
 
     streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,closure_annotated).await?;
