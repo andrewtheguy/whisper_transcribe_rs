@@ -96,7 +96,6 @@ where
                     if prev_samples.len() > 0 {
                         buf.extend(&prev_samples);
                         prev_samples.clear();
-                        eprint!("prev_samples.len() {}",prev_samples.len());
                         //std::process::exit(1)
                     }
                         assert_eq!(prev_samples.len(),0);
