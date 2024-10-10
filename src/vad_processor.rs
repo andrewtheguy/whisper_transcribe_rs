@@ -3,15 +3,16 @@ use reqwest::get;
 use tempfile::NamedTempFile;
 use url::Url;
 
-use crate::{config::Config, silero::{self, Silero}, streaming::streaming_url, utils};
+use crate::{config::Config, streaming::streaming_url};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::{fs::{self}, io::Write, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use std::{fs::{self}, io::Write, path::{Path, PathBuf}, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
 use rusqlite::{params, Connection, Result};
 
 use zhconv::{zhconv, Variant};
+use tract_onnx::prelude::*;
 
 enum State {
     NoSpeech,
@@ -30,6 +31,49 @@ impl State {
 const TARGET_SAMPLE_RATE: i64 = 16000;
 const SAMPLE_SIZE: usize = 1024;
 
+
+async fn get_model() -> Result<RunnableModel<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>, Box<dyn std::error::Error>> {
+
+    let download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1/src/silero_vad/data/silero_vad.onnx";
+
+    let model_local_directory = dirs::cache_dir().unwrap().join("whisper_transcribe_rs");
+    fs::create_dir_all(&model_local_directory).unwrap();
+    let file_name = get_filename_from_url(download_url).unwrap();
+    let model_path = model_local_directory.join(file_name);
+    if !model_path.exists() {
+        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
+        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).await.unwrap();
+    }
+
+    let window_size_samples = SAMPLE_SIZE;
+
+    eprintln!("Loading model from {}", model_path.to_str().unwrap());
+    // https://github.com/sonos/tract/issues/703
+    let model = tract_onnx::onnx()
+        .model_for_path(model_path)?
+        .with_input_names(["input", "h0", "c0"])?
+        .with_output_names(["output", "hn", "cn"])?
+        .with_input_fact(
+            0,
+            InferenceFact::dt_shape(f32::datum_type(), tvec!(1, window_size_samples)),
+        )?
+        .with_input_fact(1, InferenceFact::dt_shape(f32::datum_type(), tvec!(2, 1, 64)))?
+        .with_input_fact(2, InferenceFact::dt_shape(f32::datum_type(), tvec!(2, 1, 64)))?
+        .into_optimized()?
+        .into_runnable()?;
+
+    Ok(model)
+}
+
+fn calc_level(model: &mut RunnableModel<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>, chunk: &[f32]) -> TractResult<f32> {
+    // Convert the input into a TValue
+    let input_tensor: TValue = Tensor::from(tract_ndarray::Array2::from_shape_vec((1, chunk.len()), chunk.to_vec())?).into();
+
+    let outputs = model.run(tvec![input_tensor])?;
+    let output_tensor = outputs[0].to_array_view::<f32>()?;
+    Ok(output_tensor[0]) // return speech probability for this chunk
+}
+
    
 /*
 The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encoded audio samples. These may be 8 or 16 bit integers or 32 bit floats.
@@ -37,7 +81,8 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
  
-async fn process_buffer_with_vad<F>(silero: &mut Silero,url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+async fn process_buffer_with_vad<F>(model: &mut RunnableModel<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
+                                    url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(&Vec<i16>),
 {
@@ -66,7 +111,8 @@ where
         //silero.reset();
         //let mut rng = rand::thread_rng();
         //let probability: f64 = rng.gen();
-        let probability = silero.calc_level(&samples).unwrap();
+        let samples_f32 = samples.iter().map(|x| *x as f32 / 32768.0).collect::<Vec<f32>>();
+        let probability = calc_level(model, &samples_f32).unwrap();
         //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
         eprintln!("buf.len() {}", buf.len());
         let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
@@ -198,28 +244,6 @@ async fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), B
     Ok(())
 }
 
-async fn get_silero() -> silero::Silero {
-
-    let download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1/src/silero_vad/data/silero_vad.onnx";
-
-    let model_local_directory = dirs::cache_dir().unwrap().join("whisper_transcribe_rs");
-    fs::create_dir_all(&model_local_directory).unwrap();
-    let file_name = get_filename_from_url(download_url).unwrap();
-    let model_path = model_local_directory.join(file_name);
-    if !model_path.exists() {
-        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
-        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).await.unwrap();
-    }
-
-    let sample_rate = match TARGET_SAMPLE_RATE {
-        8000 => utils::SampleRate::EightkHz,
-        16000 => utils::SampleRate::SixteenkHz,
-        _ => panic!("Unsupported sample rate. Expect 8 kHz or 16 kHz."),
-    };
-
-    let silero = silero::Silero::new(sample_rate, model_path).unwrap();
-    silero
-}
 
 pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
@@ -235,9 +259,9 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
         num += 1;
     };
 
-    let mut silero = get_silero().await;
+    let mut model = get_model().await?;
 
-    process_buffer_with_vad(&mut silero,url,closure_annotated).await?;
+    process_buffer_with_vad(&mut model,url,closure_annotated).await?;
 
     Ok(())
 }
@@ -349,9 +373,9 @@ pub async fn transcribe_url(config: Config,model_download_url: &str) -> Result<(
 
     };
 
-    let mut silero = get_silero().await;
+    let mut model = get_model().await?;
 
-    process_buffer_with_vad(&mut silero,url,closure_annotated).await?;
+    process_buffer_with_vad(&mut model,url,closure_annotated).await?;
         
     Ok(())
 }

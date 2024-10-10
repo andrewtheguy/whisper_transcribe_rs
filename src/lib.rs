@@ -4,8 +4,6 @@ use std::io::Read;
 use std::convert::TryInto;
 
 pub mod streaming;
-pub mod silero;
-pub mod utils;
 pub mod vad_processor;
 pub mod config;
 
