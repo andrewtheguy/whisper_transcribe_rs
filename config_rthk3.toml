@@ -1,0 +1,5 @@
+
+url = "https://rthkradio3-live.akamaized.net/hls/live/2040079/radio3/master.m3u8"
+database_file_path = "./tmp/example_rthk3.db"
+language="en"
+operation = "transcribe" # or save_to_file
