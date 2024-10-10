@@ -35,7 +35,7 @@ tempfile = "3.13.0"
 url = "2.5.2"
 clap = {version="4.5.20",features = ["cargo"]}
 serde_yaml = "0.9.34"
-sha1 = "0.10.6"
+ringbuffer = "0.15.0"
 
 [dependencies.whisper-rs]
 git = "https://github.com/tazz4843/whisper-rs"

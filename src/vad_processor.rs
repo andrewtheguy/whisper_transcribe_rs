@@ -52,11 +52,17 @@ where
 
     let mut has_speech = false;
 
-    let mut prev_sample:Option<Vec<i16>> = None;
+    //let mut prev_sample:Option<Vec<i16>> = None;
 
     //let mut has_speech_time = 0.0;
 
     let mut prev_state = State::NoSpeech;
+
+    //let prev_size = ;
+
+    // one second
+    let mut prev_samples = AllocRingBuffer::<i16>::new(TARGET_SAMPLE_RATE as usize);
+
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
@@ -67,7 +73,7 @@ where
         //silero.reset();
         //let mut rng = rand::thread_rng();
         //let probability: f64 = rng.gen();
-        let probability = model.predict(samples.clone());
+        let probability = silero.calc_level(&samples).unwrap();
         //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
         eprintln!("buf.len() {}", buf.len());
         let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
@@ -80,18 +86,25 @@ where
             has_speech = false;
         }
 
+        assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
         match prev_state {
             State::NoSpeech => {
                 if has_speech {
                     eprintln!("Transitioning from no speech to speech");
                     // add previous sample if it exists
-                    if let Some(prev_sample2) = &prev_sample {
-                        buf.extend(prev_sample2);
+                    //if let Some(prev_sample2) = &prev_sample {
+                    if prev_samples.len() > 0 {
+                        buf.extend(&prev_samples);
+                        prev_samples.clear();
+                        //std::process::exit(1)
                     }
+                        assert_eq!(prev_samples.len(),0);
+                    //}
                     // start to extend the buffer
                     buf.extend(&samples);
                 } else {
                     eprintln!("Still No Speech");
+                    prev_samples.extend(samples.iter().cloned());
                 }
             },
             State::HasSpeech => {
@@ -109,14 +122,14 @@ where
                     //save the buffer if not empty
                     f(&buf);
                     buf.clear();
-                    //num += 1;
+                    prev_samples.clear();
                 }
             }
         }
 
         prev_state = State::convert(has_speech);
         
-        prev_sample = Some(samples);
+
     };
 
     streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,closure_annotated).await?;
@@ -298,9 +311,16 @@ pub async fn transcribe_url(config: Config,model_download_url: &str) -> Result<(
     // The number of past samples to consider defaults to 0.
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
 
+    use std::thread::available_parallelism;
+    let default_parallelism_approx = available_parallelism().unwrap().get();
+
+    let n_threads = *[default_parallelism_approx,4].iter().min().unwrap_or(&1);
+
+    //assert!(n_threads);
+
     // Edit params as needed.
     // Set the number of threads to use to 4.
-    params.set_n_threads(4);
+    params.set_n_threads(n_threads as i32);
     // Enable translation.
     params.set_translate(false);
     // Set the language to translate to to English.
