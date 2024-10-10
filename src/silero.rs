@@ -1,5 +1,6 @@
 use crate::utils;
 use ndarray::{s, Array, Array2, ArrayBase, ArrayD, Dim, IxDynImpl, OwnedRepr};
+use ort::GraphOptimizationLevel;
 use std::path::Path;
 
 #[derive(Debug)]
@@ -14,7 +15,11 @@ impl Silero {
         sample_rate: utils::SampleRate,
         model_path: impl AsRef<Path>,
     ) -> Result<Self, ort::Error> {
-        let session = ort::Session::builder()?.commit_from_file(model_path)?;
+        let session = ort::Session::builder()?
+        .with_optimization_level(GraphOptimizationLevel::Level3)?
+        .with_intra_threads(1)?
+        .with_inter_threads(1)?
+        .commit_from_file(model_path)?;
         let state = ArrayD::<f32>::zeros([2, 1, 128].as_slice());
         let sample_rate = Array::from_shape_vec([1], vec![sample_rate.into()]).unwrap();
         Ok(Self {
