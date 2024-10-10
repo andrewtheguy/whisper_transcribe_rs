@@ -300,9 +300,16 @@ pub async fn transcribe_url(config: Config,model_download_url: &str) -> Result<(
     // The number of past samples to consider defaults to 0.
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
 
+    use std::thread::available_parallelism;
+    let default_parallelism_approx = available_parallelism().unwrap().get();
+
+    let n_threads = *[default_parallelism_approx,4].iter().min().unwrap_or(&1);
+
+    //assert!(n_threads);
+
     // Edit params as needed.
     // Set the number of threads to use to 4.
-    params.set_n_threads(4);
+    params.set_n_threads(n_threads as i32);
     // Enable translation.
     params.set_translate(false);
     // Set the language to translate to to English.
