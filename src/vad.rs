@@ -29,6 +29,7 @@ impl VoiceActivityDetector {
                 .unwrap()
                 .with_inter_threads(1)
                 .unwrap()
+                //.commit_from_memory(MODEL)
                 .commit_from_file(model_file)
                 .unwrap();
 

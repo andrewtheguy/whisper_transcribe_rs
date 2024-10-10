@@ -1,5 +1,6 @@
 use hound::{self};
 use reqwest::get;
+use sha1::{Sha1, Digest};
 use tempfile::NamedTempFile;
 use url::Url;
 
@@ -206,9 +207,21 @@ async fn get_vad() -> VoiceActivityDetector{
 
     let half = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad_half.onnx";
 
-    let download_url = v5_download_url;
+    let download_url = v4_download_url;
 
-    let model_local_directory = dirs::cache_dir().unwrap().join("whisper_transcribe_rs");
+    // Create a Sha1 object
+    let mut hasher = Sha1::new();
+
+    // Write the input string to the hasher
+    hasher.update(download_url);
+
+    // Get the resulting hash as a hexadecimal string
+    let result = hasher.finalize();
+
+    // Convert the hash to a hex string
+    let hex_output = format!("{:x}", result);
+
+    let model_local_directory = dirs::cache_dir().unwrap().join(hex_output).join("whisper_transcribe_rs");
     fs::create_dir_all(&model_local_directory).unwrap();
     let file_name = get_filename_from_url(download_url).unwrap();
     let model_path = model_local_directory.join(file_name);
