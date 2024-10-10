@@ -3,6 +3,7 @@ use reqwest::get;
 use sha1::{Sha1, Digest};
 use tempfile::NamedTempFile;
 use url::Url;
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
