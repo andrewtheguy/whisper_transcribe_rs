@@ -58,8 +58,10 @@ where
 
     let mut prev_state = State::NoSpeech;
 
+    //let prev_size = ;
+
     // one second
-    let mut prev_samples = AllocRingBuffer::<i16>::new(SAMPLE_SIZE as usize);
+    let mut prev_samples = AllocRingBuffer::<i16>::new(TARGET_SAMPLE_RATE as usize);
 
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
@@ -91,14 +93,19 @@ where
                     eprintln!("Transitioning from no speech to speech");
                     // add previous sample if it exists
                     //if let Some(prev_sample2) = &prev_sample {
+                    if prev_samples.len() > 0 {
                         buf.extend(&prev_samples);
                         prev_samples.clear();
+                        eprint!("prev_samples.len() {}",prev_samples.len());
+                        //std::process::exit(1)
+                    }
                         assert_eq!(prev_samples.len(),0);
                     //}
                     // start to extend the buffer
                     buf.extend(&samples);
                 } else {
                     eprintln!("Still No Speech");
+                    prev_samples.extend(samples.iter().cloned());
                 }
             },
             State::HasSpeech => {
@@ -116,14 +123,14 @@ where
                     //save the buffer if not empty
                     f(&buf);
                     buf.clear();
-                    //prev_samples.clear();
+                    prev_samples.clear();
                 }
             }
         }
 
         prev_state = State::convert(has_speech);
         
-        prev_samples.extend(samples.clone());
+        
     };
 
     streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,closure_annotated).await?;
