@@ -1,10 +1,11 @@
 use hound::{self};
 use reqwest::get;
+use sha1::{Sha1, Digest};
 use tempfile::NamedTempFile;
 use url::Url;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
-use crate::{config::Config, silero::{self, Silero}, streaming::streaming_url, utils};
+use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 use std::{fs::{self}, io::Write, path::Path, time::{SystemTime, UNIX_EPOCH}};
@@ -38,7 +39,7 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
  
-async fn process_buffer_with_vad<F>(silero: &mut Silero,url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+async fn process_buffer_with_vad<F>(model: &mut VoiceActivityDetector,url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(&Vec<i16>),
 {
@@ -73,7 +74,7 @@ where
         //silero.reset();
         //let mut rng = rand::thread_rng();
         //let probability: f64 = rng.gen();
-        let probability = silero.calc_level(&samples).unwrap();
+        let probability = model.predict(samples.clone());
         //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
         eprintln!("buf.len() {}", buf.len());
         let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
@@ -129,7 +130,7 @@ where
 
         prev_state = State::convert(has_speech);
         
-        
+
     };
 
     streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,closure_annotated).await?;
@@ -212,11 +213,29 @@ async fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), B
     Ok(())
 }
 
-async fn get_silero() -> silero::Silero {
+async fn get_vad() -> VoiceActivityDetector{
 
-    let download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1/src/silero_vad/data/silero_vad.onnx";
+    let v4_download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v4.0/files/silero_vad.onnx";
 
-    let model_local_directory = dirs::cache_dir().unwrap().join("whisper_transcribe_rs");
+    let v5_download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad.onnx";
+
+    let half = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad_half.onnx";
+
+    let download_url = v4_download_url;
+
+    // Create a Sha1 object
+    let mut hasher = Sha1::new();
+
+    // Write the input string to the hasher
+    hasher.update(download_url);
+
+    // Get the resulting hash as a hexadecimal string
+    let result = hasher.finalize();
+
+    // Convert the hash to a hex string
+    let hex_output = format!("{:x}", result);
+
+    let model_local_directory = dirs::cache_dir().unwrap().join(hex_output).join("whisper_transcribe_rs");
     fs::create_dir_all(&model_local_directory).unwrap();
     let file_name = get_filename_from_url(download_url).unwrap();
     let model_path = model_local_directory.join(file_name);
@@ -225,14 +244,7 @@ async fn get_silero() -> silero::Silero {
         download_to_temp_and_move(download_url, model_path.to_str().unwrap()).await.unwrap();
     }
 
-    let sample_rate = match TARGET_SAMPLE_RATE {
-        8000 => utils::SampleRate::EightkHz,
-        16000 => utils::SampleRate::SixteenkHz,
-        _ => panic!("Unsupported sample rate. Expect 8 kHz or 16 kHz."),
-    };
-
-    let silero = silero::Silero::new(sample_rate, model_path).unwrap();
-    silero
+    VoiceActivityDetector::build(TARGET_SAMPLE_RATE,SAMPLE_SIZE,&model_path)
 }
 
 pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
@@ -249,9 +261,9 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
         num += 1;
     };
 
-    let mut silero = get_silero().await;
+    let mut model = get_vad().await;
 
-    process_buffer_with_vad(&mut silero,url,closure_annotated).await?;
+    process_buffer_with_vad(&mut model,url,closure_annotated).await?;
 
     Ok(())
 }
@@ -370,9 +382,9 @@ pub async fn transcribe_url(config: Config,model_download_url: &str) -> Result<(
 
     };
 
-    let mut silero = get_silero().await;
+    let mut model = get_vad().await;
 
-    process_buffer_with_vad(&mut silero,url,closure_annotated).await?;
+    process_buffer_with_vad(&mut model,url,closure_annotated).await?;
         
     Ok(())
 }
