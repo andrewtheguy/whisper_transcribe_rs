@@ -116,24 +116,29 @@ where
 
 
     // Convert the output to a string
-    let stdout = str::from_utf8(&output.stdout).expect("Invalid UTF-8 sequence");
+    let stdout = str::from_utf8(&output.stdout)?;
 
     // Parse the JSON output
-    let ffprobe_output: FFProbeOutput = serde_json::from_str(stdout).expect("Failed to parse JSON");
+    let ffprobe_output: FFProbeOutput = serde_json::from_str(stdout)?;
+
+    let status = output.status;
+    if !status.success() {
+        return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
+    }
 
 
-        // Check if duration exists and print it
-        if let Some(duration) = ffprobe_output.format.duration {
-            eprintln!("Duration: {} seconds", duration);
+    // Check if duration exists and print it
+    if let Some(duration) = ffprobe_output.format.duration {
+        eprintln!("Duration: {} seconds", duration);
+        streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f).await?;
+    } else {
+        eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
+        loop {
             streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f).await?;
-        } else {
-            eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
-            loop {
-                streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f).await?;
-                eprintln!("stream_stopped, restarting");
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }
+            eprintln!("stream_stopped, restarting");
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
+    }
 
     Ok(())
 }
