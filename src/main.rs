@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(arg!([config] "config to operate on").required(true).value_parser(value_parser!(PathBuf)))
         .arg(
             arg!(
-                -m --model <OPTION> "model name (turbo, distil_small_en)"
+                -m --model <OPTION> "model name (turbo, distil_small_en, ggml-small-q5_1)"
             ).value_parser(value_parser!(String))
         )
         .arg(
