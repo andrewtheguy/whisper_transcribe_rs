@@ -15,6 +15,8 @@ use rusqlite::{params, Connection, Result};
 
 use zhconv::{zhconv, Variant};
 
+use std::thread::available_parallelism;
+
 enum State {
     NoSpeech,
     HasSpeech,
@@ -268,7 +270,7 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-pub async fn transcribe_url(config: Config,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     let url = config.url.as_str();
     let mut conn: Option<Connection> = None;
@@ -312,12 +314,18 @@ pub async fn transcribe_url(config: Config,model_download_url: &str) -> Result<(
     // The number of past samples to consider defaults to 0.
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
 
-    use std::thread::available_parallelism;
-    let default_parallelism_approx = available_parallelism().unwrap().get();
 
-    let n_threads = *[default_parallelism_approx,4].iter().min().unwrap_or(&1);
+    let n_threads = match num_transcribe_threads {
+        Some(n) => n,
+        None => {
+            // get 4 or the number of cpus if less than 4
+            let default_parallelism_approx = available_parallelism().unwrap().get();
+            *[default_parallelism_approx,4].iter().min().unwrap_or(&1)
+        }
+    };
 
-    //assert!(n_threads);
+
+    //assert_eq!(n_threads,1);
 
     // Edit params as needed.
     // Set the number of threads to use to 4.

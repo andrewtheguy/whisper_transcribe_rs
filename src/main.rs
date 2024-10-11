@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::process;
+use clap::Arg;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
 use whisper_transcribe_rs::config::Config;
@@ -18,8 +19,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .arg(arg!([config] "config to operate on").required(true).value_parser(value_parser!(PathBuf)))
         .arg(
             arg!(
-                -m --model <FILE> "model name (turbo, distil_small_en)"
+                -m --model <OPTION> "model name (turbo, distil_small_en)"
             ).value_parser(value_parser!(String))
+        )
+        .arg(
+            Arg::new("num-transcribe-threads")
+            .long("num-transcribe-threads")
+            .required(false)
+            .help("number of threads for transcribe, default 4 or maximum number of cpus if less available").value_parser(value_parser!(usize))
         )
         // .arg(arg!(
         //     -d --debug ... "Turn debugging information on"
@@ -47,13 +54,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "distil_small_en" =>{
                     model_download_url = "https://huggingface.co/distil-whisper/distil-small.en/resolve/main/ggml-distil-small.en.bin?download=true";
                 },
+                "ggml-small-q5_1" =>{
+                    model_download_url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin?download=true";
+                },
                 _=>{
                     eprintln!("unknown model: {}", model);
                     process::exit(1);
                 }
             }
         }
-        //eprint!("download_url: {}", download_url);
+        
+        let num_transcribe_threads = matches.get_one::<usize>("num-transcribe-threads");
 
         let operation = config.operation.as_str();
 
@@ -69,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log4rs::init_raw_config(config_log).unwrap();
                 //log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
                 whisper_rs::install_whisper_log_trampoline();
-                transcribe_url(config,model_download_url).await?;
+                transcribe_url(config,num_transcribe_threads.copied(),model_download_url).await?;
             },
             _=>{
                 eprintln!("unknown operation: {}", operation);

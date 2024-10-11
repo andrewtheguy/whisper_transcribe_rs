@@ -1,6 +1,6 @@
 use byteorder::{ByteOrder, LittleEndian};
-use tokio::{process::Command};
-use std::{process::Stdio, time::Instant};
+use tokio::process::Command;
+use std::process::Stdio;
 use tokio::io::{AsyncReadExt, BufReader};
 use serde::{Deserialize, Serialize};
 use std::str;
