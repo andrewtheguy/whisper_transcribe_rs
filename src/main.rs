@@ -51,6 +51,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "turbo"=>{
                     model_download_url = default_download_url;
                 },
+                "base_en" =>{
+                    model_download_url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin?download=true";
+                },
                 "distil_small_en" =>{
                     model_download_url = "https://huggingface.co/distil-whisper/distil-small.en/resolve/main/ggml-distil-small.en.bin?download=true";
                 },
