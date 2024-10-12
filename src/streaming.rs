@@ -51,19 +51,19 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 
     // Create a buffered reader for the stdout of the child process
     let mut reader = BufReader::new(stdout);
-    
+
 
     // 16 kHz * 2 bytes per sample * 1 channels
     //let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
     // Buffer for reading 16,000 bytes
-    
-    let mut buffer = vec![0u8; sample_size*2]; 
+
+    let mut buffer = vec![0u8; sample_size*2];
     let mut total_bytes_in_buffer = 0;
 
     loop {
         // Read as much as possible to fill the remaining space in the buffer
         let bytes_read = reader.read(&mut buffer[total_bytes_in_buffer..])?;
-        
+
         // If no more bytes are read, we're done
         if bytes_read == 0 {
             // If there's any remaining data in the buffer, process it as the last chunk
@@ -73,7 +73,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
             }
             break;
         }
-        
+
         total_bytes_in_buffer += bytes_read;
 
         // If the buffer is full, process it and reset the buffer

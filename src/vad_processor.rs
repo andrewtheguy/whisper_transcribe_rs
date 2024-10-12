@@ -10,7 +10,7 @@ use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 use std::{io, thread};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::{fs::{self}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
@@ -35,18 +35,19 @@ impl State {
 const TARGET_SAMPLE_RATE: i64 = 16000;
 const SAMPLE_SIZE: usize = 1024;
 
-   
+
 /*
 The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encoded audio samples. These may be 8 or 16 bit integers or 32 bit floats.
 
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
- 
+
 fn process_buffer_with_vad<F>(url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: FnMut(&Vec<i16>)+ std::marker::Send + 'static,
+    F: FnMut(&Vec<i16>)+ std::marker::Send
 {
     //let target_sample_rate: i32 = 16000;
+
 
     let (tx, rx) = mpsc::channel::<Vec<i16>>();
 
@@ -68,88 +69,90 @@ where
     // one second
     let mut prev_samples = AllocRingBuffer::<i16>::new(TARGET_SAMPLE_RATE as usize);
 
-        // Consumer
-    let consumer = thread::spawn(move || {
 
-    let mut model = get_vad();
 
-        for samples in rx {
-        eprintln!("Received sample size: {}", samples.len());
-        //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
-        //let sample2 = samples.clone();
-        //silero.reset();
-        //let mut rng = rand::thread_rng();
-        //let probability: f64 = rng.gen();
-        let probability = model.predict(samples.clone());
-        //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
-        eprintln!("buf.len() {}", buf.len());
-        let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
-        //eprintln!("len_after_samples / target_sample_rate {}",seconds);
+    thread::scope(|s| {
+        s.spawn(move || {
+            //eprint!("test..............");
+            let mut model = get_vad();
+            for samples in rx {
+                eprintln!("Received sample size: {}", samples.len());
+                //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
+                //let sample2 = samples.clone();
+                //silero.reset();
+                //let mut rng = rand::thread_rng();
+                //let probability: f64 = rng.gen();
+                let probability = model.predict(samples.clone());
+                //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
+                eprintln!("buf.len() {}", buf.len());
+                let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
+                //eprintln!("len_after_samples / target_sample_rate {}",seconds);
 
-        if probability > 0.5 {
-            eprintln!("Chunk is speech: {}", probability);
-            has_speech = true;
-        } else {
-            has_speech = false;
-        }
-
-        assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
-        match prev_state {
-            State::NoSpeech => {
-                if has_speech {
-                    eprintln!("Transitioning from no speech to speech");
-                    // add previous sample if it exists
-                    //if let Some(prev_sample2) = &prev_sample {
-                    if prev_samples.len() > 0 {
-                        buf.extend(&prev_samples);
-                        prev_samples.clear();
-                        //std::process::exit(1)
-                    }
-                        assert_eq!(prev_samples.len(),0);
-                    //}
-                    // start to extend the buffer
-                    buf.extend(&samples);
-                } else {
-                    eprintln!("Still No Speech");
-                    prev_samples.extend(samples.iter().cloned());
-                }
-            },
-            State::HasSpeech => {
-                if seconds < min_speech_duration_seconds {
-                    eprintln!("override to Continue to has speech because seconds < min_seconds {}", seconds);
+                if probability > 0.5 {
+                    eprintln!("Chunk is speech: {}", probability);
                     has_speech = true;
-                }
-                if has_speech {
-                    eprintln!("Continue to has speech");
-                    // continue to extend the buffer
-                    buf.extend(&samples);
                 } else {
-                    eprintln!("Transitioning from speech to no speech");
-                    buf.extend(&samples);
-                    //save the buffer if not empty
-                    f(&buf);
-                    buf.clear();
-                    prev_samples.clear();
+                    has_speech = false;
                 }
+
+                assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
+                match prev_state {
+                    State::NoSpeech => {
+                        if has_speech {
+                            eprintln!("Transitioning from no speech to speech");
+                            // add previous sample if it exists
+                            //if let Some(prev_sample2) = &prev_sample {
+                            if prev_samples.len() > 0 {
+                                buf.extend(&prev_samples);
+                                prev_samples.clear();
+                                //std::process::exit(1)
+                            }
+                            assert_eq!(prev_samples.len(),0);
+                            //}
+                            // start to extend the buffer
+                            buf.extend(&samples);
+                        } else {
+                            eprintln!("Still No Speech");
+                            prev_samples.extend(samples.iter().cloned());
+                        }
+                    },
+                    State::HasSpeech => {
+                        if seconds < min_speech_duration_seconds {
+                            eprintln!("override to Continue to has speech because seconds < min_seconds {}", seconds);
+                            has_speech = true;
+                        }
+                        if has_speech {
+                            eprintln!("Continue to has speech");
+                            // continue to extend the buffer
+                            buf.extend(&samples);
+                        } else {
+                            eprintln!("Transitioning from speech to no speech");
+                            buf.extend(&samples);
+                            //save the buffer if not empty
+                            f(&buf);
+                            buf.clear();
+                            prev_samples.clear();
+                        }
+                    }
+                }
+
+                prev_state = State::convert(has_speech);
+
+
+            };
+
+            if buf.len() > 0 {
+                f(&buf);
+                buf.clear();
+                //num += 1;
             }
-        }
+        });
+        s.spawn(move || {
 
-        prev_state = State::convert(has_speech);
-        
+            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
 
-    };
-
-    if buf.len() > 0 {
-        f(&buf);
-        buf.clear();
-        //num += 1;
-    }
+        });
     });
-
-    streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx)?;
-
-    consumer.join().unwrap();
-
 
     Ok(())
 }
@@ -173,7 +176,7 @@ fn sync_buf_to_file(buf: &Vec<i16>, file_name: &str) {
 
 
 fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
-    
+
     // Create a state
     let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
 
@@ -187,7 +190,7 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
 }
 
 fn get_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
-    
+
     // Parse the URL
     let parsed_url = Url::parse(url)?;
     let path = parsed_url.path();
@@ -205,7 +208,7 @@ fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box<dyn
 
     // Download the file
     let mut response = get(url)?;
-    
+
     if response.status().is_success() {
         io::copy(&mut response, &mut temp_file)?;
         //while let Some(chunk) = response.chunk().await? {
@@ -257,7 +260,7 @@ fn get_vad() -> VoiceActivityDetector{
     VoiceActivityDetector::build(TARGET_SAMPLE_RATE,SAMPLE_SIZE,&model_path)
 }
 
-pub fn stream_to_file(config: &Config) -> Result<(), Box<dyn std::error::Error>>{
+pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
     //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
     //println!("First argument: {}", first_argument);
@@ -265,7 +268,7 @@ pub fn stream_to_file(config: &Config) -> Result<(), Box<dyn std::error::Error>>
     let url = config.url.as_str();
 
     let mut num = 1;
-    let closure_annotated = move |buf: &Vec<i16>| {
+    let closure_annotated = |buf: &Vec<i16>| {
         let file_name = format!("tmp/predict.stream.speech.{}.wav", format!("{:0>3}",num));
         sync_buf_to_file(&buf, &file_name);
         num += 1;
@@ -276,10 +279,10 @@ pub fn stream_to_file(config: &Config) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-pub fn transcribe_url(config: &Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
- 
+pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+
     let rt = tokio::runtime::Builder::new_current_thread()
-    .enable_all().build()?;
+        .enable_all().build()?;
 
     let url = config.url.as_str();
     let mut pool: Option<Pool<Sqlite>> = None;
@@ -297,7 +300,7 @@ pub fn transcribe_url(config: &Config,num_transcribe_threads: Option<usize>,mode
                 )").execute(&pool2).await.unwrap();
             Some(pool2)
         });
-         //pool = Some(pool2);
+        //pool = Some(pool2);
     }
 
 
@@ -337,15 +340,15 @@ pub fn transcribe_url(config: &Config,num_transcribe_threads: Option<usize>,mode
     };
 
 
-    let language = "en";
+    //assert_eq!(n_threads,1);
 
     // Edit params as needed.
     // Set the number of threads to use to 4.
     params.set_n_threads(n_threads as i32);
     // Enable translation.
     params.set_translate(false);
-    // Set the language to translate
-    params.set_language(Some(language));
+    // Set the language to translate to to English.
+    params.set_language(Some(config.language.as_str()));
     // Disable anything that prints to stdout.
     params.set_print_special(false);
     params.set_debug_mode(false);
@@ -358,7 +361,7 @@ pub fn transcribe_url(config: &Config,num_transcribe_threads: Option<usize>,mode
 
     //let mut file = File::create("transcript.jsonl").expect("failed to create file");
 
-    let language2 = "en";
+    let language = config.language.clone();
     params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
 
         let start = SystemTime::now();
@@ -372,7 +375,7 @@ pub fn transcribe_url(config: &Config,num_transcribe_threads: Option<usize>,mode
 
         // only convert to traditional chinese when saving to db
         // output original in jsonl
-        let db_save_text = match language2 {
+        let db_save_text = match language.as_str() {
             "zh" | "yue" => {
                 zhconv(&data.text, Variant::ZhHant)
             },
@@ -382,16 +385,16 @@ pub fn transcribe_url(config: &Config,num_transcribe_threads: Option<usize>,mode
         };
         if let Some(pool) = &pool {
             rt.block_on(async {
-                
-                    sqlx::query(
-                        "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
-                    ).bind(since_the_epoch.as_millis() as f64/1000.0)
+
+                sqlx::query(
+                    "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
+                ).bind(since_the_epoch.as_millis() as f64/1000.0)
                     .bind(db_save_text)
                     .execute(pool).await
-                
+
             }).unwrap();
         }
-    
+
     });
 
 
@@ -400,15 +403,15 @@ pub fn transcribe_url(config: &Config,num_transcribe_threads: Option<usize>,mode
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
-    let closure_annotated = move |buf: &Vec<i16>| {
+    let closure_annotated = |buf: &Vec<i16>| {
 
-            transcribe(&mut state, &params, &buf);
+        transcribe(&mut state, &params, &buf);
 
     };
 
     //let mut model = get_vad();
 
     process_buffer_with_vad(url,closure_annotated)?;
-        
+
     Ok(())
 }
