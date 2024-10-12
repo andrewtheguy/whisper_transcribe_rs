@@ -23,7 +23,7 @@ struct FFProbeOutput {
 
 
 
-fn streaming_inner_loop<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut f: F) -> Result<(), Box<dyn std::error::Error>>
+fn streaming_inner_loop<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut callback: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(Vec<i16>),
 {
@@ -71,7 +71,7 @@ where
             // If there's any remaining data in the buffer, process it as the last chunk
             if total_bytes_in_buffer > 0 {
                 let slice = &buffer[..total_bytes_in_buffer];
-                f(convert_to_i16_vec(slice));
+                callback(convert_to_i16_vec(slice));
             }
             break;
         }
@@ -80,7 +80,7 @@ where
 
         // If the buffer is full, process it and reset the buffer
         if total_bytes_in_buffer == buffer.len() {
-            f(convert_to_i16_vec(&buffer));
+            callback(convert_to_i16_vec(&buffer));
             total_bytes_in_buffer = 0; // Reset the buffer
         }
     }
@@ -95,7 +95,7 @@ where
 }
 
 
-pub fn streaming_url<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut f: F) -> Result<(), Box<dyn std::error::Error>>
+pub fn streaming_url<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut callback: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(Vec<i16>),
 {
@@ -127,11 +127,11 @@ where
     // Check if duration exists and print it
     if let Some(duration) = ffprobe_output.format.duration {
         eprintln!("Duration: {} seconds", duration);
-        streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f)?;
+        streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut callback)?;
     } else {
         eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {
-            streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f)?;
+            streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut callback)?;
             eprintln!("stream_stopped, restarting");
             sleep(std::time::Duration::from_millis(500));
         }
