@@ -9,7 +9,8 @@ use ringbuffer::{AllocRingBuffer, RingBuffer};
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::io;
+use std::{io, thread};
+use std::sync::{mpsc, Arc, Mutex};
 use std::{fs::{self}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
@@ -34,19 +35,21 @@ impl State {
 const TARGET_SAMPLE_RATE: i64 = 16000;
 const SAMPLE_SIZE: usize = 1024;
 
-   
+
 /*
 The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encoded audio samples. These may be 8 or 16 bit integers or 32 bit floats.
 
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
- 
-fn process_buffer_with_vad<F>(model: &mut VoiceActivityDetector,url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+
+fn process_buffer_with_vad<F>(url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: FnMut(&Vec<i16>),
+    F: FnMut(&Vec<i16>)+ std::marker::Send
 {
     //let target_sample_rate: i32 = 16000;
 
+
+    let (tx, rx) = mpsc::sync_channel::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
     let mut buf:Vec<i16> = Vec::new();
     //let mut num = 1;
@@ -67,82 +70,89 @@ where
     let mut prev_samples = AllocRingBuffer::<i16>::new(TARGET_SAMPLE_RATE as usize);
 
 
-    //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
-    //let whisper_wrapper_ref2 = &whisper_wrapper;
-    let closure_annotated = |samples: Vec<i16>| {
-        eprintln!("Received sample size: {}", samples.len());
-        //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
-        //let sample2 = samples.clone();
-        //silero.reset();
-        //let mut rng = rand::thread_rng();
-        //let probability: f64 = rng.gen();
-        let probability = model.predict(samples.clone());
-        //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
-        eprintln!("buf.len() {}", buf.len());
-        let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
-        //eprintln!("len_after_samples / target_sample_rate {}",seconds);
 
-        if probability > 0.5 {
-            eprintln!("Chunk is speech: {}", probability);
-            has_speech = true;
-        } else {
-            has_speech = false;
-        }
+    thread::scope(|s| {
+        s.spawn(move || {
+            //eprint!("test..............");
+            let mut model = get_vad();
+            for samples in rx {
+                eprintln!("Received sample size: {}", samples.len());
+                //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
+                //let sample2 = samples.clone();
+                //silero.reset();
+                //let mut rng = rand::thread_rng();
+                //let probability: f64 = rng.gen();
+                let probability = model.predict(samples.clone());
+                //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
+                eprintln!("buf.len() {}", buf.len());
+                let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
+                //eprintln!("len_after_samples / target_sample_rate {}",seconds);
 
-        assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
-        match prev_state {
-            State::NoSpeech => {
-                if has_speech {
-                    eprintln!("Transitioning from no speech to speech");
-                    // add previous sample if it exists
-                    //if let Some(prev_sample2) = &prev_sample {
-                    if prev_samples.len() > 0 {
-                        buf.extend(&prev_samples);
-                        prev_samples.clear();
-                        //std::process::exit(1)
-                    }
-                        assert_eq!(prev_samples.len(),0);
-                    //}
-                    // start to extend the buffer
-                    buf.extend(&samples);
-                } else {
-                    eprintln!("Still No Speech");
-                    prev_samples.extend(samples.iter().cloned());
-                }
-            },
-            State::HasSpeech => {
-                if seconds < min_speech_duration_seconds {
-                    eprintln!("override to Continue to has speech because seconds < min_seconds {}", seconds);
+                if probability > 0.5 {
+                    eprintln!("Chunk is speech: {}", probability);
                     has_speech = true;
-                }
-                if has_speech {
-                    eprintln!("Continue to has speech");
-                    // continue to extend the buffer
-                    buf.extend(&samples);
                 } else {
-                    eprintln!("Transitioning from speech to no speech");
-                    buf.extend(&samples);
-                    //save the buffer if not empty
-                    f(&buf);
-                    buf.clear();
-                    prev_samples.clear();
+                    has_speech = false;
                 }
+
+                assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
+                match prev_state {
+                    State::NoSpeech => {
+                        if has_speech {
+                            eprintln!("Transitioning from no speech to speech");
+                            // add previous sample if it exists
+                            //if let Some(prev_sample2) = &prev_sample {
+                            if prev_samples.len() > 0 {
+                                buf.extend(&prev_samples);
+                                prev_samples.clear();
+                                //std::process::exit(1)
+                            }
+                            assert_eq!(prev_samples.len(),0);
+                            //}
+                            // start to extend the buffer
+                            buf.extend(&samples);
+                        } else {
+                            eprintln!("Still No Speech");
+                            prev_samples.extend(samples.iter().cloned());
+                        }
+                    },
+                    State::HasSpeech => {
+                        if seconds < min_speech_duration_seconds {
+                            eprintln!("override to Continue to has speech because seconds < min_seconds {}", seconds);
+                            has_speech = true;
+                        }
+                        if has_speech {
+                            eprintln!("Continue to has speech");
+                            // continue to extend the buffer
+                            buf.extend(&samples);
+                        } else {
+                            eprintln!("Transitioning from speech to no speech");
+                            buf.extend(&samples);
+                            //save the buffer if not empty
+                            f(&buf);
+                            buf.clear();
+                            prev_samples.clear();
+                        }
+                    }
+                }
+
+                prev_state = State::convert(has_speech);
+
+
+            };
+
+            if buf.len() > 0 {
+                f(&buf);
+                buf.clear();
+                //num += 1;
             }
-        }
+        });
+        s.spawn(move || {
 
-        prev_state = State::convert(has_speech);
-        
+            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
 
-    };
-
-    streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,closure_annotated)?;
-
-    if buf.len() > 0 {
-        f(&buf);
-        buf.clear();
-        //num += 1;
-    }
-
+        });
+    });
 
     Ok(())
 }
@@ -166,7 +176,7 @@ fn sync_buf_to_file(buf: &Vec<i16>, file_name: &str) {
 
 
 fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
-    
+
     // Create a state
     let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
 
@@ -180,7 +190,7 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
 }
 
 fn get_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
-    
+
     // Parse the URL
     let parsed_url = Url::parse(url)?;
     let path = parsed_url.path();
@@ -198,7 +208,7 @@ fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box<dyn
 
     // Download the file
     let mut response = get(url)?;
-    
+
     if response.status().is_success() {
         io::copy(&mut response, &mut temp_file)?;
         //while let Some(chunk) = response.chunk().await? {
@@ -264,17 +274,15 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
         num += 1;
     };
 
-    let mut model = get_vad();
-
-    process_buffer_with_vad(&mut model,url,closure_annotated)?;
+    process_buffer_with_vad(url,closure_annotated)?;
 
     Ok(())
 }
 
 pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
- 
+
     let rt = tokio::runtime::Builder::new_current_thread()
-    .enable_all().build()?;
+        .enable_all().build()?;
 
     let url = config.url.as_str();
     let mut pool: Option<Pool<Sqlite>> = None;
@@ -292,7 +300,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                 )").execute(&pool2).await.unwrap();
             Some(pool2)
         });
-         //pool = Some(pool2);
+        //pool = Some(pool2);
     }
 
 
@@ -377,16 +385,16 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         };
         if let Some(pool) = &pool {
             rt.block_on(async {
-                
-                    sqlx::query(
-                        "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
-                    ).bind(since_the_epoch.as_millis() as f64/1000.0)
+
+                sqlx::query(
+                    "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
+                ).bind(since_the_epoch.as_millis() as f64/1000.0)
                     .bind(db_save_text)
                     .execute(pool).await
-                
+
             }).unwrap();
         }
-    
+
     });
 
 
@@ -397,13 +405,13 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     //let whisper_wrapper_ref2 = &whisper_wrapper;
     let closure_annotated = |buf: &Vec<i16>| {
 
-            transcribe(&mut state, &params, &buf);
+        transcribe(&mut state, &params, &buf);
 
     };
 
-    let mut model = get_vad();
+    //let mut model = get_vad();
 
-    process_buffer_with_vad(&mut model,url,closure_annotated)?;
-        
+    process_buffer_with_vad(url,closure_annotated)?;
+
     Ok(())
 }

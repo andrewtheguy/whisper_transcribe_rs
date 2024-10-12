@@ -1,5 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
-use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
+use std::{io::{BufReader, Read}, process::{Command, Stdio}, sync::mpsc::{Sender, SyncSender}, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
 
@@ -23,9 +23,7 @@ struct FFProbeOutput {
 
 
 
-fn streaming_inner_loop<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut callback: F) -> Result<(), Box<dyn std::error::Error>>
-where
-    F: FnMut(Vec<i16>),
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &SyncSender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -53,34 +51,34 @@ where
 
     // Create a buffered reader for the stdout of the child process
     let mut reader = BufReader::new(stdout);
-    
+
 
     // 16 kHz * 2 bytes per sample * 1 channels
     //let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
     // Buffer for reading 16,000 bytes
-    
-    let mut buffer = vec![0u8; sample_size*2]; 
+
+    let mut buffer = vec![0u8; sample_size*2];
     let mut total_bytes_in_buffer = 0;
 
     loop {
         // Read as much as possible to fill the remaining space in the buffer
         let bytes_read = reader.read(&mut buffer[total_bytes_in_buffer..])?;
-        
+
         // If no more bytes are read, we're done
         if bytes_read == 0 {
             // If there's any remaining data in the buffer, process it as the last chunk
             if total_bytes_in_buffer > 0 {
                 let slice = &buffer[..total_bytes_in_buffer];
-                callback(convert_to_i16_vec(slice));
+                tx.send(convert_to_i16_vec(slice))?;
             }
             break;
         }
-        
+
         total_bytes_in_buffer += bytes_read;
 
         // If the buffer is full, process it and reset the buffer
         if total_bytes_in_buffer == buffer.len() {
-            callback(convert_to_i16_vec(&buffer));
+            tx.send(convert_to_i16_vec(&buffer))?;
             total_bytes_in_buffer = 0; // Reset the buffer
         }
     }
@@ -95,9 +93,7 @@ where
 }
 
 
-pub fn streaming_url<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut callback: F) -> Result<(), Box<dyn std::error::Error>>
-where
-    F: FnMut(Vec<i16>),
+pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &SyncSender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
 {
 
     // Run ffmpeg to get raw PCM (s16le) data at 16kHz
@@ -127,11 +123,11 @@ where
     // Check if duration exists and print it
     if let Some(duration) = ffprobe_output.format.duration {
         eprintln!("Duration: {} seconds", duration);
-        streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut callback)?;
+        streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx)?;
     } else {
         eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {
-            streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut callback)?;
+            streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx)?;
             eprintln!("stream_stopped, restarting");
             sleep(std::time::Duration::from_millis(500));
         }

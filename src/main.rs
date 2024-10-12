@@ -23,9 +23,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .arg(
             Arg::new("num-transcribe-threads")
-            .long("num-transcribe-threads")
-            .required(false)
-            .help("number of threads for transcribe, default 4 or maximum number of cpus if less available").value_parser(value_parser!(usize))
+                .long("num-transcribe-threads")
+                .required(false)
+                .help("number of threads for transcribe, default 4 or maximum number of cpus if less available").value_parser(value_parser!(usize))
         )
         // .arg(arg!(
         //     -d --debug ... "Turn debugging information on"
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // )
         .get_matches();
 
-        
+
     if let Some(config_file) = matches.get_one::<PathBuf>("config"){
 
         let config: Config = toml::from_str(fs::read_to_string(config_file)?.as_str()).unwrap();
@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        
+
         let num_transcribe_threads = matches.get_one::<usize>("num-transcribe-threads");
 
         let operation = config.operation.as_str();
@@ -93,9 +93,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("config file not found");
         process::exit(1);
     }
-    
 
 
-    
+
+
     Ok(())
 }
