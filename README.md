@@ -1,5 +1,5 @@
-sample setup to transcribe with whisper.cpp's rust binding
-it will convert the file with ffmpeg to the waveform in memory first
+Sample setup to transcribe with whisper.cpp's rust binding
+it will convert the url stream with ffmpeg to the waveform in memory first, then output to jsonl and at the same time save to database
 need to install ffmpeg separately
 
 - create a config toml file
@@ -23,3 +23,4 @@ build linux arm binary:
 ```
 DOCKER_BUILDKIT=1 docker build --platform linux/arm64 -o target/linux_arm64 .
 ```
+
