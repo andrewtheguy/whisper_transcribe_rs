@@ -1,6 +1,7 @@
 use hound::{self};
 use reqwest::blocking::get;
 use sha1::{Sha1, Digest};
+use sqlx::postgres::PgPoolOptions;
 use sqlx::sqlite::{SqliteConnectOptions};
 use sqlx::{Pool, Sqlite, SqlitePool};
 use url::Url;
@@ -17,6 +18,8 @@ use serde_json::json;
 use zhconv::{zhconv, Variant};
 
 use std::thread::available_parallelism;
+
+use chrono::Utc;
 
 enum State {
     NoSpeech,
@@ -284,21 +287,28 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         .enable_all().build()?;
 
     let url = config.url.as_str();
-    let mut pool: Option<Pool<Sqlite>> = None;
+    let mut pool: Option<Pool<_>> = None;
 
     if let Some(database_name) = &config.database_name {
-        let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
+
         pool = rt.block_on(async {
-            
+            let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
             let pool2 = SqlitePool::connect_with(SqliteConnectOptions::new().filename(&path)
                 .create_if_missing(true)).await.unwrap();
-            //let conn2 = SqliteConnection::connect(database_file_path).await?;
-            sqlx::query(
-                "CREATE TABLE IF NOT EXISTS transcripts (
+            sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
                         id INTEGER PRIMARY KEY,
                         timestamp datetime NOT NULL,
                         content TEXT NOT NULL
-                )").execute(&pool2).await.unwrap();
+                );"#
+            ).execute(&pool2).await.unwrap();
+            //let pool2 = PgPoolOptions::new().connect(format!("postgres://postgres:changeme@10.22.33.120/{}",database_name).as_str()).await.unwrap();
+            // sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
+            //     id serial PRIMARY KEY,
+            //     "timestamp" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+            //     content TEXT NOT NULL
+            //     );"#
+            //     ).execute(&pool2).await.unwrap();
+
             Some(pool2)
         });
     }
@@ -364,13 +374,11 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     let language = config.language.clone();
     params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
 
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards");
+        // Get the current timestamp using chrono
+        let current_timestamp = Utc::now();
 
         let line = json!({"start_timestamp":data.start_timestamp,
-            "end_timestamp":data.end_timestamp, "cur_ts": since_the_epoch.as_millis() as f64/1000.0, "text":data.text});
+            "end_timestamp":data.end_timestamp, "cur_ts": current_timestamp.timestamp_millis() as f64/1000.0, "text":data.text});
         println!("{}", line);
 
         // only convert to traditional chinese when saving to db
@@ -385,10 +393,11 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         };
         if let Some(pool) = &pool {
             rt.block_on(async {
-
+                let sql = r#"INSERT INTO transcripts ("timestamp", content) VALUES ($1, $2)"#;
+                eprint!("{}", sql);
                 sqlx::query(
-                    "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
-                ).bind(since_the_epoch.as_millis() as f64/1000.0)
+                    sql,
+                ).bind(current_timestamp)
                     .bind(db_save_text)
                     .execute(pool).await
 
