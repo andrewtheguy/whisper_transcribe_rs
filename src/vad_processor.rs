@@ -49,7 +49,7 @@ where
     //let target_sample_rate: i32 = 16000;
 
 
-    let (tx, rx) = mpsc::channel::<Vec<i16>>();
+    let (tx, rx) = mpsc::sync_channel::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
     let mut buf:Vec<i16> = Vec::new();
     //let mut num = 1;

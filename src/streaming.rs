@@ -1,5 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
-use std::{io::{BufReader, Read}, process::{Command, Stdio}, sync::mpsc::Sender, thread::sleep};
+use std::{io::{BufReader, Read}, process::{Command, Stdio}, sync::mpsc::{Sender, SyncSender}, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
 
@@ -23,7 +23,7 @@ struct FFProbeOutput {
 
 
 
-fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &SyncSender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -93,7 +93,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 }
 
 
-pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
+pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &SyncSender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
 {
 
     // Run ffmpeg to get raw PCM (s16le) data at 16kHz
