@@ -286,9 +286,11 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     let url = config.url.as_str();
     let mut pool: Option<Pool<Sqlite>> = None;
 
-    if let Some(database_file_path) = &config.database_file_path {
+    if let Some(database_name) = &config.database_name {
+        let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
         pool = rt.block_on(async {
-            let pool2 = SqlitePool::connect_with(SqliteConnectOptions::new().filename(database_file_path)
+            
+            let pool2 = SqlitePool::connect_with(SqliteConnectOptions::new().filename(&path)
                 .create_if_missing(true)).await.unwrap();
             //let conn2 = SqliteConnection::connect(database_file_path).await?;
             sqlx::query(
@@ -299,7 +301,6 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                 )").execute(&pool2).await.unwrap();
             Some(pool2)
         });
-        //pool = Some(pool2);
     }
 
 
