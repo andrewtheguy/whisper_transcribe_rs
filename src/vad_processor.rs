@@ -205,7 +205,7 @@ fn get_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::Error>
 fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a temporary file. This file will be automatically deleted when dropped.
-    let mut temp_file = tempfile::tempfile()?;
+    let mut temp_file = tempfile::NamedTempFile::new()?;
 
     // Download the file
     let mut response = get(url)?;
@@ -216,13 +216,11 @@ fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box<dyn
         //    temp_file.write_all(&chunk)?;
         //}
         //// Move the temp file to the destination only if the download was successful.
-        //temp_file.persist(destination)?; // Moves the file to the final destination
+        temp_file.persist(destination)?; // Moves the file to the final destination
         eprintln!("File downloaded and moved to: {}", destination);
     } else {
         println!("Failed to download the file. Status: {}", response.status());
     }
-
-    drop(temp_file);
 
     Ok(())
 }
