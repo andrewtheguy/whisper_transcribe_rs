@@ -13,11 +13,9 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 use std::{fs::{self}, io::Write, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
-use rusqlite::{params, Connection, Result};
-
 use zhconv::{zhconv, Variant};
 
-use std::thread::available_parallelism;
+use std::thread::{self, available_parallelism};
 
 enum State {
     NoSpeech,
@@ -275,17 +273,18 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
 pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
  
     let url = config.url.as_str();
-    let mut conn: Option<SqliteConnection> = None;
+    let mut pool: Option<Pool<Sqlite>> = None;
 
     if let Some(database_file_path) = &config.database_file_path {
-        let conn2 = SqliteConnection::connect(database_file_path).await?;
+        let pool2 = SqlitePoolOptions::new().connect(database_file_path).await?;
+        //let conn2 = SqliteConnection::connect(database_file_path).await?;
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS transcripts (
                     id INTEGER PRIMARY KEY,
                     timestamp datetime NOT NULL,
                     content TEXT NOT NULL
-            )").execute(&mut conn2).await?;
-        conn = Some(conn2);
+            )").execute(&pool2).await?;
+        pool = Some(pool2);
     }
 
 
@@ -369,13 +368,15 @@ pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>
             }
         };
 
-        if let Some(conn) = &mut conn {
-            sqlx::query(
-                "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
-            ).bind(since_the_epoch.as_millis() as f64/1000.0)
-            .bind(db_save_text)
-            .execute(conn).await?;
-            
+        if let Some(pool) = &pool {
+            let handler = thread::spawn(move || async {
+                sqlx::query(
+                    "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
+                ).bind(since_the_epoch.as_millis() as f64/1000.0)
+                .bind(db_save_text)
+                .execute(pool).await.unwrap();
+            });
+            handler.join().unwrap();
         }
     
     });
