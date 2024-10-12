@@ -73,7 +73,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match operation {
             "save_to_file"=>{
                 //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
-                stream_to_file(config)?;
+                stream_to_file(&config)?;
             },
             "transcribe"=>{
                 //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log4rs::init_raw_config(config_log).unwrap();
                 //log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
                 whisper_rs::install_whisper_log_trampoline();
-                transcribe_url(config,num_transcribe_threads.copied(),model_download_url)?;
+                transcribe_url(&config,num_transcribe_threads.copied(),model_download_url)?;
             },
             _=>{
                 eprintln!("unknown operation: {}", operation);

@@ -9,7 +9,8 @@ use ringbuffer::{AllocRingBuffer, RingBuffer};
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::io;
+use std::{io, thread};
+use std::sync::mpsc;
 use std::{fs::{self}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
@@ -41,12 +42,13 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
  
-fn process_buffer_with_vad<F>(model: &mut VoiceActivityDetector,url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+fn process_buffer_with_vad<F>(url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: FnMut(&Vec<i16>),
+    F: FnMut(&Vec<i16>)+ std::marker::Send + 'static,
 {
     //let target_sample_rate: i32 = 16000;
 
+    let (tx, rx) = mpsc::channel::<Vec<i16>>();
 
     let mut buf:Vec<i16> = Vec::new();
     //let mut num = 1;
@@ -66,10 +68,12 @@ where
     // one second
     let mut prev_samples = AllocRingBuffer::<i16>::new(TARGET_SAMPLE_RATE as usize);
 
+        // Consumer
+    let consumer = thread::spawn(move || {
 
-    //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
-    //let whisper_wrapper_ref2 = &whisper_wrapper;
-    let closure_annotated = |samples: Vec<i16>| {
+    let mut model = get_vad();
+
+        for samples in rx {
         eprintln!("Received sample size: {}", samples.len());
         //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
         //let sample2 = samples.clone();
@@ -135,13 +139,16 @@ where
 
     };
 
-    streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,closure_annotated)?;
-
     if buf.len() > 0 {
         f(&buf);
         buf.clear();
         //num += 1;
     }
+    });
+
+    streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx)?;
+
+    consumer.join().unwrap();
 
 
     Ok(())
@@ -250,7 +257,7 @@ fn get_vad() -> VoiceActivityDetector{
     VoiceActivityDetector::build(TARGET_SAMPLE_RATE,SAMPLE_SIZE,&model_path)
 }
 
-pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
+pub fn stream_to_file(config: &Config) -> Result<(), Box<dyn std::error::Error>>{
     //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
     //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
     //println!("First argument: {}", first_argument);
@@ -258,20 +265,18 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     let url = config.url.as_str();
 
     let mut num = 1;
-    let closure_annotated = |buf: &Vec<i16>| {
+    let closure_annotated = move |buf: &Vec<i16>| {
         let file_name = format!("tmp/predict.stream.speech.{}.wav", format!("{:0>3}",num));
         sync_buf_to_file(&buf, &file_name);
         num += 1;
     };
 
-    let mut model = get_vad();
-
-    process_buffer_with_vad(&mut model,url,closure_annotated)?;
+    process_buffer_with_vad(url,closure_annotated)?;
 
     Ok(())
 }
 
-pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn transcribe_url(config: &Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
  
     let rt = tokio::runtime::Builder::new_current_thread()
     .enable_all().build()?;
@@ -332,15 +337,15 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     };
 
 
-    //assert_eq!(n_threads,1);
+    let language = "en";
 
     // Edit params as needed.
     // Set the number of threads to use to 4.
     params.set_n_threads(n_threads as i32);
     // Enable translation.
     params.set_translate(false);
-    // Set the language to translate to to English.
-    params.set_language(Some(config.language.as_str()));
+    // Set the language to translate
+    params.set_language(Some(language));
     // Disable anything that prints to stdout.
     params.set_print_special(false);
     params.set_debug_mode(false);
@@ -353,7 +358,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     //let mut file = File::create("transcript.jsonl").expect("failed to create file");
 
-    let language = config.language.clone();
+    let language2 = "en";
     params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
 
         let start = SystemTime::now();
@@ -367,7 +372,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
         // only convert to traditional chinese when saving to db
         // output original in jsonl
-        let db_save_text = match language.as_str() {
+        let db_save_text = match language2 {
             "zh" | "yue" => {
                 zhconv(&data.text, Variant::ZhHant)
             },
@@ -395,15 +400,15 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
-    let closure_annotated = |buf: &Vec<i16>| {
+    let closure_annotated = move |buf: &Vec<i16>| {
 
             transcribe(&mut state, &params, &buf);
 
     };
 
-    let mut model = get_vad();
+    //let mut model = get_vad();
 
-    process_buffer_with_vad(&mut model,url,closure_annotated)?;
+    process_buffer_with_vad(url,closure_annotated)?;
         
     Ok(())
 }

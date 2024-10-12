@@ -1,5 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
-use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
+use std::{io::{BufReader, Read}, process::{Command, Stdio}, sync::mpsc::Sender, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
 
@@ -23,9 +23,7 @@ struct FFProbeOutput {
 
 
 
-fn streaming_inner_loop<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut callback: F) -> Result<(), Box<dyn std::error::Error>>
-where
-    F: FnMut(Vec<i16>),
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -71,7 +69,7 @@ where
             // If there's any remaining data in the buffer, process it as the last chunk
             if total_bytes_in_buffer > 0 {
                 let slice = &buffer[..total_bytes_in_buffer];
-                callback(convert_to_i16_vec(slice));
+                tx.send(convert_to_i16_vec(slice))?;
             }
             break;
         }
@@ -80,7 +78,7 @@ where
 
         // If the buffer is full, process it and reset the buffer
         if total_bytes_in_buffer == buffer.len() {
-            callback(convert_to_i16_vec(&buffer));
+            tx.send(convert_to_i16_vec(&buffer))?;
             total_bytes_in_buffer = 0; // Reset the buffer
         }
     }
@@ -95,9 +93,7 @@ where
 }
 
 
-pub fn streaming_url<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut callback: F) -> Result<(), Box<dyn std::error::Error>>
-where
-    F: FnMut(Vec<i16>),
+pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
 {
 
     // Run ffmpeg to get raw PCM (s16le) data at 16kHz
@@ -127,11 +123,11 @@ where
     // Check if duration exists and print it
     if let Some(duration) = ffprobe_output.format.duration {
         eprintln!("Duration: {} seconds", duration);
-        streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut callback)?;
+        streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx)?;
     } else {
         eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {
-            streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut callback)?;
+            streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx)?;
             eprintln!("stream_stopped, restarting");
             sleep(std::time::Duration::from_millis(500));
         }
