@@ -1,7 +1,7 @@
 use hound::{self};
 use reqwest::blocking::get;
 use sha1::{Sha1, Digest};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions};
 use sqlx::{Pool, Sqlite, SqlitePool};
 use url::Url;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -10,7 +10,7 @@ use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 use std::{io, thread};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc;
 use std::{fs::{self}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
@@ -56,13 +56,9 @@ where
 
     let min_speech_duration_seconds = 3.0;
 
-    let mut has_speech = false;
-
     //let mut prev_sample:Option<Vec<i16>> = None;
 
     //let mut has_speech_time = 0.0;
-
-    let mut prev_state = State::NoSpeech;
 
     //let prev_size = ;
 
@@ -73,7 +69,12 @@ where
 
     thread::scope(|s| {
         s.spawn(move || {
-            //eprint!("test..............");
+            
+
+            let mut prev_state = State::NoSpeech;
+
+            let mut has_speech;
+
             let mut model = get_vad();
             for samples in rx {
                 eprintln!("Received sample size: {}", samples.len());

@@ -43,11 +43,12 @@ impl VoiceActivityDetector {
     }
 
     /// Gets the chunks size
-    pub(crate) fn chunk_size(&self) -> usize {
-        self.chunk_size
-    }
+    //pub(crate) fn chunk_size(&self) -> usize {
+    //    self.chunk_size
+    //}
 
     /// Resets the state of the voice activity detector session.
+    #[allow(dead_code)]
     pub fn reset(&mut self) {
         self.h.fill(0f32);
         self.c.fill(0f32);

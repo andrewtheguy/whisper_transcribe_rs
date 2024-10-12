@@ -1,5 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
-use std::{io::{BufReader, Read}, process::{Command, Stdio}, sync::mpsc::{Sender, SyncSender}, thread::sleep};
+use std::{io::{BufReader, Read}, process::{Command, Stdio}, sync::mpsc::SyncSender, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
 
