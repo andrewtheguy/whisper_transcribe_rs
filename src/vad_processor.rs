@@ -375,17 +375,17 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                 data.text
             }
         };
-
-        rt.block_on(async {
-            if let Some(pool) = &pool {
-                sqlx::query(
-                    "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
-                ).bind(since_the_epoch.as_millis() as f64/1000.0)
-                .bind(db_save_text)
-                .execute(pool).await.unwrap();
-            }
-        });
-
+        if let Some(pool) = &pool {
+            rt.block_on(async {
+                
+                    sqlx::query(
+                        "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
+                    ).bind(since_the_epoch.as_millis() as f64/1000.0)
+                    .bind(db_save_text)
+                    .execute(pool).await
+                
+            }).unwrap();
+        }
     
     });
 
