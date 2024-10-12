@@ -1,7 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
-use tokio::process::Command;
-use std::process::Stdio;
-use tokio::io::{AsyncReadExt, BufReader};
+use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
 
@@ -25,7 +23,7 @@ struct FFProbeOutput {
 
 
 
-async fn streaming_inner_loop<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut f: F) -> Result<(), Box<dyn std::error::Error>>
+fn streaming_inner_loop<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(Vec<i16>),
 {
@@ -66,7 +64,7 @@ where
 
     loop {
         // Read as much as possible to fill the remaining space in the buffer
-        let bytes_read = reader.read(&mut buffer[total_bytes_in_buffer..]).await?;
+        let bytes_read = reader.read(&mut buffer[total_bytes_in_buffer..])?;
         
         // If no more bytes are read, we're done
         if bytes_read == 0 {
@@ -88,7 +86,7 @@ where
     }
 
     // Wait for the child process to finish
-    let status = ffmpeg_process.wait().await?;
+    let status = ffmpeg_process.wait()?;
     if !status.success() {
         return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
     }
@@ -97,7 +95,7 @@ where
 }
 
 
-pub async fn streaming_url<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut f: F) -> Result<(), Box<dyn std::error::Error>>
+pub fn streaming_url<F>(input_url: &str, target_sample_rate: i64, sample_size: usize,mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(Vec<i16>),
 {
@@ -111,8 +109,7 @@ where
             "-of", "json",
             input_url,      // Input url
         ])
-        .output()
-        .await?;
+        .output()?;
 
 
     // Convert the output to a string
@@ -130,13 +127,13 @@ where
     // Check if duration exists and print it
     if let Some(duration) = ffprobe_output.format.duration {
         eprintln!("Duration: {} seconds", duration);
-        streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f).await?;
+        streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f)?;
     } else {
         eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {
-            streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f).await?;
+            streaming_inner_loop(input_url, target_sample_rate, sample_size, &mut f)?;
             eprintln!("stream_stopped, restarting");
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            sleep(std::time::Duration::from_millis(500));
         }
     }
 
