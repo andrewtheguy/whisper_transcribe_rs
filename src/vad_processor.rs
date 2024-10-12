@@ -1,21 +1,21 @@
 use hound::{self};
-use reqwest::get;
+use reqwest::blocking::get;
 use sha1::{Sha1, Digest};
-use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite, SqliteConnection};
-use sqlx::Connection;
-use tempfile::NamedTempFile;
+use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::{Pool, Sqlite};
 use url::Url;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::{fs::{self}, io::Write, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use std::io;
+use std::{fs::{self}, path::Path, time::{SystemTime, UNIX_EPOCH}};
 use serde_json::json;
 
 use zhconv::{zhconv, Variant};
 
-use std::thread::{self, available_parallelism};
+use std::thread::available_parallelism;
 
 enum State {
     NoSpeech,
@@ -41,7 +41,7 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
  
-async fn process_buffer_with_vad<F>(model: &mut VoiceActivityDetector,url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+fn process_buffer_with_vad<F>(model: &mut VoiceActivityDetector,url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
     F: FnMut(&Vec<i16>),
 {
@@ -135,7 +135,7 @@ where
 
     };
 
-    streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,closure_annotated).await?;
+    streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,closure_annotated)?;
 
     if buf.len() > 0 {
         f(&buf);
@@ -191,37 +191,38 @@ fn get_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::Error>
     }
 }
 
-async fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a temporary file. This file will be automatically deleted when dropped.
-    let mut temp_file = NamedTempFile::new()?;
+    let mut temp_file = tempfile::tempfile()?;
 
     // Download the file
-    let mut response = get(url).await?;
+    let mut response = get(url)?;
     
     if response.status().is_success() {
-
-        // Stream the response body and write it to the file chunk by chunk
-        while let Some(chunk) = response.chunk().await? {
-            temp_file.write_all(&chunk)?;
-        }
-        // Move the temp file to the destination only if the download was successful.
-        temp_file.persist(destination)?; // Moves the file to the final destination
+        io::copy(&mut response, &mut temp_file)?;
+        //while let Some(chunk) = response.chunk().await? {
+        //    temp_file.write_all(&chunk)?;
+        //}
+        //// Move the temp file to the destination only if the download was successful.
+        //temp_file.persist(destination)?; // Moves the file to the final destination
         eprintln!("File downloaded and moved to: {}", destination);
     } else {
         println!("Failed to download the file. Status: {}", response.status());
     }
 
+    drop(temp_file);
+
     Ok(())
 }
 
-async fn get_vad() -> VoiceActivityDetector{
+fn get_vad() -> VoiceActivityDetector{
 
     let v4_download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v4.0/files/silero_vad.onnx";
 
-    let v5_download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad.onnx";
+    //let v5_download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad.onnx";
 
-    let half = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad_half.onnx";
+    //let half = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad_half.onnx";
 
     let download_url = v4_download_url;
 
@@ -243,13 +244,13 @@ async fn get_vad() -> VoiceActivityDetector{
     let model_path = model_local_directory.join(file_name);
     if !model_path.exists() {
         eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
-        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).await.unwrap();
+        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).unwrap();
     }
 
     VoiceActivityDetector::build(TARGET_SAMPLE_RATE,SAMPLE_SIZE,&model_path)
 }
 
-pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
+pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
     //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
     //println!("First argument: {}", first_argument);
@@ -263,29 +264,35 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
         num += 1;
     };
 
-    let mut model = get_vad().await;
+    let mut model = get_vad();
 
-    process_buffer_with_vad(&mut model,url,closure_annotated).await?;
+    process_buffer_with_vad(&mut model,url,closure_annotated)?;
 
     Ok(())
 }
 
-pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
  
+    let rt = tokio::runtime::Builder::new_multi_thread()
+    .enable_all().build()?;
+
     let url = config.url.as_str();
     let mut pool: Option<Pool<Sqlite>> = None;
 
-    if let Some(database_file_path) = &config.database_file_path {
-        let pool2 = SqlitePoolOptions::new().connect(database_file_path).await?;
-        //let conn2 = SqliteConnection::connect(database_file_path).await?;
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS transcripts (
-                    id INTEGER PRIMARY KEY,
-                    timestamp datetime NOT NULL,
-                    content TEXT NOT NULL
-            )").execute(&pool2).await?;
-        pool = Some(pool2);
-    }
+    // if let Some(database_file_path) = &config.database_file_path {
+    //     pool = rt.block_on(async {
+    //         let pool2 = SqlitePoolOptions::new().connect(database_file_path).await.unwrap();
+    //         //let conn2 = SqliteConnection::connect(database_file_path).await?;
+    //         sqlx::query(
+    //             "CREATE TABLE IF NOT EXISTS transcripts (
+    //                     id INTEGER PRIMARY KEY,
+    //                     timestamp datetime NOT NULL,
+    //                     content TEXT NOT NULL
+    //             )").execute(&pool2).await.unwrap();
+    //         Some(pool2)
+    //     });
+    //      //pool = Some(pool2);
+    // }
 
 
     // Load a context and model.
@@ -299,7 +306,7 @@ pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>
     let model_path = model_local_directory.join(file_name);
     if !model_path.exists() {
         eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
-        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).await.unwrap();
+        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).unwrap();
     }
 
     let ctx = WhisperContext::new_with_params(
@@ -368,16 +375,16 @@ pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>
             }
         };
 
-        if let Some(pool) = &pool {
-            let handler = thread::spawn(move || async {
-                sqlx::query(
-                    "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
-                ).bind(since_the_epoch.as_millis() as f64/1000.0)
-                .bind(db_save_text)
-                .execute(pool).await.unwrap();
-            });
-            handler.join().unwrap();
-        }
+        // rt.block_on(async {
+        //     if let Some(pool) = &pool {
+        //         sqlx::query(
+        //             "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
+        //         ).bind(since_the_epoch.as_millis() as f64/1000.0)
+        //         .bind(db_save_text)
+        //         .execute(pool).await.unwrap();
+        //     }
+        // });
+
     
     });
 
@@ -393,9 +400,9 @@ pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>
 
     };
 
-    let mut model = get_vad().await;
+    let mut model = get_vad();
 
-    process_buffer_with_vad(&mut model,url,closure_annotated).await?;
+    process_buffer_with_vad(&mut model,url,closure_annotated)?;
         
     Ok(())
 }
