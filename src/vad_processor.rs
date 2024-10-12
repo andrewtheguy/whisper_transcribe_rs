@@ -1,6 +1,8 @@
 use hound::{self};
 use reqwest::get;
 use sha1::{Sha1, Digest};
+use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite, SqliteConnection};
+use sqlx::Connection;
 use tempfile::NamedTempFile;
 use url::Url;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -271,20 +273,18 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
 }
 
 pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
-
+ 
     let url = config.url.as_str();
-    let mut conn: Option<Connection> = None;
+    let mut conn: Option<SqliteConnection> = None;
 
     if let Some(database_file_path) = &config.database_file_path {
-        let conn2 = Connection::open(database_file_path)?;
-        conn2.execute(
+        let conn2 = SqliteConnection::connect(database_file_path).await?;
+        sqlx::query(
             "CREATE TABLE IF NOT EXISTS transcripts (
                     id INTEGER PRIMARY KEY,
                     timestamp datetime NOT NULL,
                     content TEXT NOT NULL
-            )",
-            [],
-        )?;
+            )").execute(&mut conn2).await?;
         conn = Some(conn2);
     }
 
@@ -369,11 +369,13 @@ pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>
             }
         };
 
-        if let Some(conn) = &conn {
-            conn.execute(
+        if let Some(conn) = &mut conn {
+            sqlx::query(
                 "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
-                params![since_the_epoch.as_millis() as f64/1000.0, db_save_text],
-            ).unwrap();
+            ).bind(since_the_epoch.as_millis() as f64/1000.0)
+            .bind(db_save_text)
+            .execute(conn).await?;
+            
         }
     
     });
