@@ -273,18 +273,20 @@ pub async fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Er
 pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
  
     let url = config.url.as_str();
-    let mut pool: Option<Pool<Sqlite>> = None;
+    //let mut conn: Option<SqliteConnection> = None;
+
+    let rt = tokio::runtime::Handle::current();
 
     if let Some(database_file_path) = &config.database_file_path {
-        let pool2 = SqlitePoolOptions::new().connect(database_file_path).await?;
+        let mut conn = SqliteConnection::connect(format!("{}?mode=rwc",database_file_path).as_str()).await?;
         //let conn2 = SqliteConnection::connect(database_file_path).await?;
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS transcripts (
                     id INTEGER PRIMARY KEY,
                     timestamp datetime NOT NULL,
                     content TEXT NOT NULL
-            )").execute(&pool2).await?;
-        pool = Some(pool2);
+            )").execute(&mut conn).await?;
+        //conn = Some(conn2);
     }
 
 
@@ -359,7 +361,7 @@ pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>
 
         // only convert to traditional chinese when saving to db
         // output original in jsonl
-        let db_save_text = match language.as_str() {
+        let db_save_text = match language.to_owned().as_str() {
             "zh" | "yue" => {
                 zhconv(&data.text, Variant::ZhHant)
             },
@@ -368,15 +370,18 @@ pub async fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>
             }
         };
 
-        if let Some(pool) = &pool {
-            let handler = thread::spawn(move || async {
+        let path2: Option<String> = config.database_file_path.clone();
+        if let Some(database_file_path) = path2 {
+            //TODO: no error handling yet
+            rt.spawn(async move {
+                let mut conn = SqliteConnection::connect(format!("{}?mode=rwc",database_file_path).as_str()).await.unwrap();
                 sqlx::query(
                     "INSERT INTO transcripts (timestamp, content) VALUES (?, ?)",
                 ).bind(since_the_epoch.as_millis() as f64/1000.0)
                 .bind(db_save_text)
-                .execute(pool).await.unwrap();
-            });
-            handler.join().unwrap();
+                .execute(&mut conn);
+             });
+  
         }
     
     });
