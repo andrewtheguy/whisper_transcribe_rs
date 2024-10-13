@@ -57,7 +57,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 
     // 16 kHz * 2 bytes per sample * 1 channels
     //let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
-    // Buffer for reading 16,000 bytes
+    // Buffer for reading 16,000 * 2 bytes
 
     let mut buffer = vec![0u8; sample_size*2];
     let mut total_bytes_in_buffer = 0;
