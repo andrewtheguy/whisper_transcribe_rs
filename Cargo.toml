@@ -39,7 +39,8 @@ sha1 = "0.10.6"
 sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite", "postgres", "chrono"] }
 chrono = "0.4.38"
 crossbeam = "0.8.4"
-keyring = { version = "3", features = ["apple-native", "windows-native"] }
+fs2 = "0.4.3"
+#keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 [dependencies.whisper-rs]
 git = "https://github.com/tazz4843/whisper-rs"

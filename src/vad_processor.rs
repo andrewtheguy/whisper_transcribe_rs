@@ -6,6 +6,7 @@ use sqlx::{Pool};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::download_utils::{get_whisper_model, get_silero_model};
+use crate::key_ring_utils::get_password;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
@@ -229,11 +230,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     let mut pool: Option<Pool<_>> = None;
 
     if let Some(database_name) = &config.database_name {
-
-        let entry = keyring::Entry::new("whisper_transcribe_rs", "postgres_password")?;
-        //entry.set_password("test_password")?;
-        let p = entry.get_password()?;
-        let database_password = p.as_str();
+        let database_password = get_password("postgres_portainer_instance_password")?;
         //println!("My password is '{}'", password);
 
         pool = rt.block_on(async {
@@ -251,7 +248,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                 .port(5432)
                 .database(database_name)
                 .username("postgres")
-                .password(database_password)
+                .password(database_password.as_str())
             ).await.unwrap();
             sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
                 id serial PRIMARY KEY,
