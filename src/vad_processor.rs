@@ -186,8 +186,22 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
     // Run the model.
     state.full(params.clone(), &audio[..]).expect("failed to run model");
 
-    //eprintln!("{}",state.full_n_segments().expect("failed to get number of segments"));
-    //samples.clear();
+	// fetch the results
+	let num_segments = state
+		.full_n_segments()
+		.expect("failed to get number of segments");
+	for i in 0..num_segments {
+		let segment = state
+			.full_get_segment_text(i)
+			.expect("failed to get segment");
+		let start_timestamp = state
+			.full_get_segment_t0(i)
+			.expect("failed to get segment start timestamp");
+		let end_timestamp = state
+			.full_get_segment_t1(i)
+			.expect("failed to get segment end timestamp");
+		println!("[{} - {}]: {}", start_timestamp, end_timestamp, segment);
+	}
 }
 
 fn get_vad() -> Result<VoiceActivityDetector, Box<dyn std::error::Error>> {
@@ -321,7 +335,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
         let line = json!({"start_timestamp":data.start_timestamp,
             "end_timestamp":data.end_timestamp, "cur_ts": format!("{}",current_timestamp.format("%+")), "text":data.text});
-        println!("{}", line);
+        //println!("{}", line);
 
         // only convert to traditional chinese when saving to db
         // output original in jsonl

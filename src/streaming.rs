@@ -72,7 +72,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 
         // If no more bytes are read, we're done
         if bytes_read == 0 {
-            println!("{}",json!({"channel_size": tx.len()}).to_string());
+            //println!("{}",json!({"channel_size": tx.len()}).to_string());
             // If there's any remaining data in the buffer, process it as the last chunk
             if total_bytes_in_buffer > 0 {
                 let slice = &buffer[..total_bytes_in_buffer];
@@ -85,7 +85,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 
         // If the buffer is full, process it and reset the buffer
         if total_bytes_in_buffer == buffer.len() {
-            println!("{}",json!({"channel_size": tx.len()}).to_string());
+            //println!("{}",json!({"channel_size": tx.len()}).to_string());
             tx.send(convert_to_i16_vec(&buffer))?;
             total_bytes_in_buffer = 0; // Reset the buffer
         }
