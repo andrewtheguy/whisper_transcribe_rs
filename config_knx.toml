@@ -1,6 +1,12 @@
 
 # https://github.com/junguler/m3u-radio-music-playlists/blob/403134e0e43c7cf16d76d33278197b9fda7cf57e/radio_station_usa.fm/news.m3u#L6
 url = "https://live.amperwave.net/manifest/audacy-knxamaac-imc"
-database_name = "example_knx"
 language="en"
 operation = "transcribe" # or save_to_file
+
+[database_config]
+database_host = "10.22.33.120"
+database_user = "postgres"
+database_port = 5432
+database_password_key = "postgres_portainer"
+database_name = "example_knx"

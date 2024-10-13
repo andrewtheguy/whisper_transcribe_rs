@@ -3,3 +3,10 @@ url = "https://rthkradio3-live.akamaized.net/hls/live/2040079/radio3/master.m3u8
 database_name = "example_rthk3"
 language="en"
 operation = "transcribe" # or save_to_file
+
+[database_config]
+database_host = "10.22.33.120"
+database_user = "postgres"
+database_port = 5432
+database_password_key = "postgres_portainer"
+database_name = "example_rthk3"

@@ -229,8 +229,8 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     let url = config.url.as_str();
     let mut pool: Option<Pool<_>> = None;
 
-    if let Some(database_name) = &config.database_name {
-        let database_password = get_password("postgres_portainer_instance_password")?;
+    if let Some(database_config) = &config.database_config {
+        let database_password = get_password(&database_config.database_password_key)?;
         //println!("My password is '{}'", password);
 
         pool = rt.block_on(async {
@@ -244,10 +244,10 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
             //     );"#
             // ).execute(&pool2).await.unwrap();
             let pool2 = PgPoolOptions::new().connect_with(PgConnectOptions::new()
-                .host("10.22.33.120")
-                .port(5432)
-                .database(database_name)
-                .username("postgres")
+                .host(&database_config.database_host)
+                .port(database_config.database_port.unwrap_or(5432))
+                .database(database_config.database_name.as_str())
+                .username(database_config.database_user.as_str())
                 .password(database_password.as_str())
             ).await.unwrap();
             sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
