@@ -1,13 +1,11 @@
 use crossbeam::channel::bounded;
 use hound::{self};
-use reqwest::blocking::get;
-use sha1::{Sha1, Digest};
 use sqlx::postgres::PgPoolOptions;
 use sqlx::sqlite::{SqliteConnectOptions};
 use sqlx::{Pool, Sqlite, SqlitePool};
-use url::Url;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
+use crate::download_utils::{get_whisper_model, get_silero_model};
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
@@ -33,6 +31,11 @@ impl State {
             _ => State::NoSpeech,
         }
     }
+}
+
+struct DatabaseInfo {
+    pool: Pool<Sqlite>,
+    table_name: String,
 }
 
 const TARGET_SAMPLE_RATE: i64 = 16000;
@@ -78,7 +81,7 @@ where
 
             let mut has_speech;
 
-            let mut model = get_vad();
+            let mut model = get_vad().unwrap();
             for samples in rx {
                 eprintln!("Received sample size: {}", samples.len());
                 //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
@@ -191,73 +194,11 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
     //samples.clear();
 }
 
-fn get_filename_from_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+fn get_vad() -> Result<VoiceActivityDetector, Box<dyn std::error::Error>> {
 
-    // Parse the URL
-    let parsed_url = Url::parse(url)?;
-    let path = parsed_url.path();
-    if let Some(filename) = Path::new(path).file_name(){
-        Ok(filename.to_str().unwrap().to_string())
-    }else{
-        Err("Failed to get filename from URL".into())
-    }
-}
+    let model_path = get_silero_model()?;
 
-fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box<dyn std::error::Error>> {
-
-    // Create a temporary file. This file will be automatically deleted when dropped.
-    let mut temp_file = tempfile::NamedTempFile::new()?;
-
-    // Download the file
-    let mut response = get(url)?;
-
-    if response.status().is_success() {
-        io::copy(&mut response, &mut temp_file)?;
-        //while let Some(chunk) = response.chunk().await? {
-        //    temp_file.write_all(&chunk)?;
-        //}
-        //// Move the temp file to the destination only if the download was successful.
-        temp_file.persist(destination)?; // Moves the file to the final destination
-        eprintln!("File downloaded and moved to: {}", destination);
-    } else {
-        println!("Failed to download the file. Status: {}", response.status());
-    }
-
-    Ok(())
-}
-
-fn get_vad() -> VoiceActivityDetector{
-
-    let v4_download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v4.0/files/silero_vad.onnx";
-
-    //let v5_download_url = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad.onnx";
-
-    //let half = "https://github.com/snakers4/silero-vad/raw/refs/tags/v5.1.2/src/silero_vad/data/silero_vad_half.onnx";
-
-    let download_url = v4_download_url;
-
-    // Create a Sha1 object
-    let mut hasher = Sha1::new();
-
-    // Write the input string to the hasher
-    hasher.update(download_url);
-
-    // Get the resulting hash as a hexadecimal string
-    let result = hasher.finalize();
-
-    // Convert the hash to a hex string
-    let hex_output = format!("{:x}", result);
-
-    let model_local_directory = dirs::cache_dir().unwrap().join(hex_output).join("whisper_transcribe_rs");
-    fs::create_dir_all(&model_local_directory).unwrap();
-    let file_name = get_filename_from_url(download_url).unwrap();
-    let model_path = model_local_directory.join(file_name);
-    if !model_path.exists() {
-        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
-        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).unwrap();
-    }
-
-    VoiceActivityDetector::build(TARGET_SAMPLE_RATE,SAMPLE_SIZE,&model_path)
+    Ok(VoiceActivityDetector::build(TARGET_SAMPLE_RATE,SAMPLE_SIZE,&model_path))
 }
 
 pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
@@ -279,6 +220,7 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     Ok(())
 }
 
+// also saves to db if database_name is provided in config
 pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -317,14 +259,8 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     let download_url = model_download_url;
 
-    let model_local_directory = dirs::cache_dir().unwrap().join("whisper_transcribe_rs");
-    fs::create_dir_all(&model_local_directory).unwrap();
-    let file_name = get_filename_from_url(download_url).unwrap();
-    let model_path = model_local_directory.join(file_name);
-    if !model_path.exists() {
-        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
-        download_to_temp_and_move(download_url, model_path.to_str().unwrap()).unwrap();
-    }
+    let model_path = get_whisper_model(download_url)?;
+
 
     let ctx = WhisperContext::new_with_params(
         model_path.to_str().unwrap(),
