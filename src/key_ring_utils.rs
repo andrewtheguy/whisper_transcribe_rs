@@ -32,6 +32,9 @@ pub fn set_password(key: &str, password: &str) -> Result<(), Box<dyn std::error:
 pub fn get_password(key: &str) -> Result<String, Box<dyn std::error::Error>> {
     let password_folder = dirs::config_local_dir().unwrap().join(PASSWORD_FOLDER);
     let password_file = password_folder.join(PASSWORD_FILE);
+    if !password_file.exists() {
+        return Err("Password file does not exist".into());
+    }
     let mut file = File::open(&password_file)?;
     FileExt::try_lock_exclusive(&file)?;
     let mut str1 = String::new();
