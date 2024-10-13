@@ -9,6 +9,7 @@ pub mod vad_processor;
 pub mod config;
 pub mod download_utils;
 pub mod key_ring_utils;
+mod utils;
 mod vad;
 
 pub fn convert_file_to_wave(input_file: &str, target_sample_rate: i32) -> Result<Vec<i16>, Box<dyn std::error::Error>> {

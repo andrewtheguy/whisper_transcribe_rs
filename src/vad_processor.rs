@@ -19,6 +19,8 @@ use std::thread::available_parallelism;
 
 use chrono::Utc;
 
+use crate::utils::build_current_thread_runtime;
+
 enum State {
     NoSpeech,
     HasSpeech,
@@ -217,8 +219,7 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
 // also saves to db if database_name is provided in config
 pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all().build()?;
+    let rt = build_current_thread_runtime()?;
 
     let url = config.url.as_str();
     let mut pool: Option<Pool<_>> = None;
