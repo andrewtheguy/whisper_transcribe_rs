@@ -236,7 +236,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
             //             timestamp datetime NOT NULL,
             //             content TEXT NOT NULL
             //     );"#
-            // ).execute(&pool2).await.unwrap();
+            // ).execute(&pool2).await?;
             let ssl_mode = match database_config.require_ssl {
                 true => sqlx::postgres::PgSslMode::Require,
                 _ => sqlx::postgres::PgSslMode::Prefer
@@ -248,16 +248,16 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                 .database(database_config.database_name.as_str())
                 .username(database_config.database_user.as_str())
                 .password(database_password.as_str())
-            ).await.unwrap();
+            ).await?;
             sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
                 id serial PRIMARY KEY,
                 "timestamp" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
                 content TEXT NOT NULL
                 );"#
-                ).execute(&pool2).await.unwrap();
+                ).execute(&pool2).await?;
 
-            Some(pool2)
-        });
+            Ok::<Option<Pool<_>>, Box<dyn std::error::Error>>(Some(pool2))
+        })?;
     }
 
 
@@ -335,13 +335,13 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         if let Some(pool) = &pool {
             rt.block_on(async {
                 let sql = r#"INSERT INTO transcripts ("timestamp", content) VALUES ($1, $2)"#;
-                eprint!("{}", sql);
+                //eprint!("{}", sql);
                 sqlx::query(
                     sql,
                 ).bind(current_timestamp)
                     .bind(db_save_text)
-                    .execute(pool).await
-
+                    .execute(pool).await?;
+                Ok::<(), Box<dyn std::error::Error>>(())    
             }).unwrap();
         }
 
