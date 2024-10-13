@@ -2,9 +2,12 @@ use std::env;
 use std::fs;
 use std::process;
 use clap::Arg;
+use clap::ArgAction;
+use whisper_transcribe_rs::key_ring_utils;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
 use whisper_transcribe_rs::config::Config;
+use std::io::Write;
 
 use std::path::PathBuf;
 
@@ -27,6 +30,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .required(false)
                 .help("number of threads for transcribe, default 4 or maximum number of cpus if less available").value_parser(value_parser!(usize))
         )
+        .arg(
+            Arg::new("set-password-only")
+                .long("set-password-only")
+                .required(false)
+                .help("set database password specified by the key from config").action(ArgAction::SetTrue)
+        )
         // .arg(arg!(
         //     -d --debug ... "Turn debugging information on"
         // ))
@@ -39,8 +48,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     if let Some(config_file) = matches.get_one::<PathBuf>("config"){
-
         let config: Config = toml::from_str(fs::read_to_string(config_file)?.as_str()).unwrap();
+        let set_password_only = matches.get_flag("set-password-only");
+        if set_password_only {
+            let database_password_key = config.database_config.unwrap().database_password_key.clone();
+            print!("Type the password for database_password_key {}: ", database_password_key);
+            std::io::stdout().flush().unwrap();
+            let mut buf: String = String::new();
+            std::io::stdin().read_line(&mut buf)?;
+            let password = buf.trim();
+            //let password = entry.get_password()?;
+            println!("My password is '{}'", password);
+            key_ring_utils::set_password(&database_password_key, password)?;
+            return Ok(());
+        }
+        
+
 
         let default_download_url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/4496f29dabb6f37d8e6c45c3ec89ccbe66a832ea/ggml-large-v3-turbo.bin?download=true";
 
