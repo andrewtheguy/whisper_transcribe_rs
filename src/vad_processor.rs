@@ -2,7 +2,7 @@ use crossbeam::channel::bounded;
 use hound::{self};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 //use sqlx::sqlite::{SqliteConnectOptions};
-use sqlx::{Pool};
+use sqlx::Pool;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::download_utils::{get_whisper_model, get_silero_model};
@@ -10,8 +10,7 @@ use crate::key_ring_utils::get_password;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use std::{io, thread};
-use std::{fs::{self}, path::Path};
+use std::thread;
 use serde_json::json;
 
 use zhconv::{zhconv, Variant};
@@ -32,11 +31,6 @@ impl State {
             _ => State::NoSpeech,
         }
     }
-}
-
-struct DatabaseInfo<P: sqlx::Database> {
-    pool: Pool<P>,
-    table_name: String,
 }
 
 const TARGET_SAMPLE_RATE: i64 = 16000;
