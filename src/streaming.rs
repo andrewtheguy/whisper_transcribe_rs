@@ -91,6 +91,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 
     // Wait for the child process to finish
     let status = ffmpeg_process.wait()?;
+    eprintln!("ffmpeg exited with status: {}", status);
     if !status.success() {
         return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
     }
