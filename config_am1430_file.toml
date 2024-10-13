@@ -1,0 +1,5 @@
+url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3"
+#url = "http://mobilewzrc.serverroom.us:6916/"
+database_name = "example_am1430"
+language="yue"
+operation = "save_to_file"
