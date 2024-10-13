@@ -1,3 +1,4 @@
+use crossbeam::channel::bounded;
 use hound::{self};
 use reqwest::blocking::get;
 use sha1::{Sha1, Digest};
@@ -11,8 +12,7 @@ use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 use std::{io, thread};
-use std::sync::mpsc;
-use std::{fs::{self}, path::Path, time::{SystemTime, UNIX_EPOCH}};
+use std::{fs::{self}, path::Path};
 use serde_json::json;
 
 use zhconv::{zhconv, Variant};
@@ -47,12 +47,12 @@ The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 
 
 fn process_buffer_with_vad<F>(url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: FnMut(&Vec<i16>)+ std::marker::Send
+    F: FnMut(&Vec<i16>) + std::marker::Send
 {
     //let target_sample_rate: i32 = 16000;
 
 
-    let (tx, rx) = mpsc::sync_channel::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
     let mut buf:Vec<i16> = Vec::new();
     //let mut num = 1;

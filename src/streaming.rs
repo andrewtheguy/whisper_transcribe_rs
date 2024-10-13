@@ -1,5 +1,7 @@
 use byteorder::{ByteOrder, LittleEndian};
-use std::{io::{BufReader, Read}, process::{Command, Stdio}, sync::mpsc::SyncSender, thread::sleep};
+use crossbeam::channel::Sender;
+use serde_json::json;
+use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
 
@@ -23,7 +25,7 @@ struct FFProbeOutput {
 
 
 
-fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &SyncSender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -61,6 +63,10 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
     let mut total_bytes_in_buffer = 0;
 
     loop {
+        if tx.is_full() {
+            panic!("Channel is full, transcribe thread not being able to catch up, aborting");
+        }
+        println!("{}",json!({"channel_size": tx.len()}).to_string());
         // Read as much as possible to fill the remaining space in the buffer
         let bytes_read = reader.read(&mut buffer[total_bytes_in_buffer..])?;
 
@@ -93,7 +99,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 }
 
 
-pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &SyncSender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
+pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
 {
 
     // Run ffmpeg to get raw PCM (s16le) data at 16kHz
