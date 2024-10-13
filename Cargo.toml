@@ -36,7 +36,7 @@ clap = {version="4.5.20",features = ["cargo"]}
 serde_yaml = "0.9.34"
 ringbuffer = "0.15.0"
 sha1 = "0.10.6"
-sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite", "postgres", "chrono"] }
+sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite", "postgres", "chrono","tls-native-tls"] }
 chrono = "0.4.38"
 crossbeam = "0.8.4"
 fs2 = "0.4.3"

@@ -231,7 +231,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     if let Some(database_config) = &config.database_config {
         let database_password = get_password(&database_config.database_password_key)?;
-        //println!("My password is '{}'", password);
+        //println!("My password is '{}'", database_password);
 
         pool = rt.block_on(async {
             //let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
@@ -244,6 +244,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
             //     );"#
             // ).execute(&pool2).await.unwrap();
             let pool2 = PgPoolOptions::new().connect_with(PgConnectOptions::new()
+                .ssl_mode(sqlx::postgres::PgSslMode::Require)
                 .host(&database_config.database_host)
                 .port(database_config.database_port.unwrap_or(5432))
                 .database(database_config.database_name.as_str())

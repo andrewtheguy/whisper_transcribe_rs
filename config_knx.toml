@@ -10,3 +10,10 @@ database_user = "postgres"
 database_port = 5432
 database_password_key = "postgres_portainer"
 database_name = "example_knx"
+
+# [database_config]
+# database_host = "us-west-2.sql.xata.sh"
+# database_user = "mo4dsg"
+# database_port = 5432
+# database_password_key = "postgres_xata"
+# database_name = "my-database:main"
