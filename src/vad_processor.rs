@@ -243,8 +243,12 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
             //             content TEXT NOT NULL
             //     );"#
             // ).execute(&pool2).await.unwrap();
+            let ssl_mode = match database_config.require_ssl {
+                true => sqlx::postgres::PgSslMode::Require,
+                _ => sqlx::postgres::PgSslMode::Prefer
+            };
             let pool2 = PgPoolOptions::new().connect_with(PgConnectOptions::new()
-                .ssl_mode(sqlx::postgres::PgSslMode::Require)
+                .ssl_mode(ssl_mode)
                 .host(&database_config.database_host)
                 .port(database_config.database_port.unwrap_or(5432))
                 .database(database_config.database_name.as_str())

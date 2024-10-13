@@ -10,6 +10,7 @@ database_user = "postgres"
 database_port = 5432
 database_password_key = "postgres_portainer"
 database_name = "example_knx"
+require_ssl=false
 
 # [database_config]
 # database_host = "us-west-2.sql.xata.sh"
@@ -17,3 +18,4 @@ database_name = "example_knx"
 # database_port = 5432
 # database_password_key = "postgres_xata"
 # database_name = "my-database:main"
+# require_ssl=true

@@ -10,3 +10,4 @@ database_user = "postgres"
 database_port = 5432
 database_password_key = "postgres_portainer"
 database_name = "example_rthk1"
+require_ssl=false

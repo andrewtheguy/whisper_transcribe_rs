@@ -7,6 +7,7 @@ pub struct DatabaseConfig {
     pub database_user: String,
     pub database_password_key: String,
     pub database_name: String,
+    pub require_ssl: bool,
 }
 
 #[derive(Deserialize)]
