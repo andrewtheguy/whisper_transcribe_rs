@@ -25,7 +25,7 @@ struct FFProbeOutput {
 
 
 
-fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Vec<i16>>,is_live_stream: bool) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -63,8 +63,9 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
     let mut total_bytes_in_buffer = 0;
 
     loop {
-        if tx.is_full() {
-            panic!("Channel is full, transcribe thread not being able to catch up, aborting");
+        // don't allow live stream to be too backed up
+        if is_live_stream && tx.is_full() {
+            panic!("Channel is full for livestream, transcribe thread not being able to catch up, aborting");
         }
         // Read as much as possible to fill the remaining space in the buffer
         let bytes_read = reader.read(&mut buffer[total_bytes_in_buffer..])?;
@@ -131,11 +132,11 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
     // Check if duration exists and print it
     if let Some(duration) = ffprobe_output.format.duration {
         eprintln!("Duration: {} seconds", duration);
-        streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx)?;
+        streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx, false)?;
     } else {
         eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {
-            streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx)?;
+            streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx,true)?;
             eprintln!("stream_stopped, restarting");
             sleep(std::time::Duration::from_millis(500));
         }
