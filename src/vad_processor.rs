@@ -1,8 +1,8 @@
 use crossbeam::channel::bounded;
 use hound::{self};
-use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::{SqliteConnectOptions};
-use sqlx::{Pool, Sqlite, SqlitePool};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+//use sqlx::sqlite::{SqliteConnectOptions};
+use sqlx::{Pool};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::download_utils::{get_whisper_model, get_silero_model};
@@ -33,8 +33,8 @@ impl State {
     }
 }
 
-struct DatabaseInfo {
-    pool: Pool<Sqlite>,
+struct DatabaseInfo<P: sqlx::Database> {
+    pool: Pool<P>,
     table_name: String,
 }
 
@@ -75,7 +75,6 @@ where
 
     thread::scope(|s| {
         s.spawn(move || {
-            
 
             let mut prev_state = State::NoSpeech;
 
@@ -165,7 +164,7 @@ where
 
 
 
-fn sync_buf_to_file(buf: &Vec<i16>, file_name: &str) {
+fn save_buf_to_file(buf: &Vec<i16>, file_name: &str) {
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: 16000,
@@ -211,7 +210,7 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     let mut num = 1;
     let closure_annotated = |buf: &Vec<i16>| {
         let file_name = format!("tmp/predict.stream.speech.{}.wav", format!("{:0>3}",num));
-        sync_buf_to_file(&buf, &file_name);
+        save_buf_to_file(&buf, &file_name);
         num += 1;
     };
 
@@ -231,23 +230,35 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     if let Some(database_name) = &config.database_name {
 
+        let entry = keyring::Entry::new("whisper_transcribe_rs", "postgres_password")?;
+        //entry.set_password("test_password")?;
+        let p = entry.get_password()?;
+        let database_password = p.as_str();
+        //println!("My password is '{}'", password);
+
         pool = rt.block_on(async {
-            let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
-            let pool2 = SqlitePool::connect_with(SqliteConnectOptions::new().filename(&path)
-                .create_if_missing(true)).await.unwrap();
-            sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
-                        id INTEGER PRIMARY KEY,
-                        timestamp datetime NOT NULL,
-                        content TEXT NOT NULL
-                );"#
-            ).execute(&pool2).await.unwrap();
-            //let pool2 = PgPoolOptions::new().connect(format!("postgres://postgres:changeme@10.22.33.120/{}",database_name).as_str()).await.unwrap();
+            //let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
+            // let pool2 = SqlitePool::connect_with(SqliteConnectOptions::new().filename(&path)
+            //     .create_if_missing(true)).await.unwrap();
             // sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
-            //     id serial PRIMARY KEY,
-            //     "timestamp" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-            //     content TEXT NOT NULL
+            //             id INTEGER PRIMARY KEY,
+            //             timestamp datetime NOT NULL,
+            //             content TEXT NOT NULL
             //     );"#
-            //     ).execute(&pool2).await.unwrap();
+            // ).execute(&pool2).await.unwrap();
+            let pool2 = PgPoolOptions::new().connect_with(PgConnectOptions::new()
+                .host("10.22.33.120")
+                .port(5432)
+                .database(database_name)
+                .username("postgres")
+                .password(database_password)
+            ).await.unwrap();
+            sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
+                id serial PRIMARY KEY,
+                "timestamp" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+                content TEXT NOT NULL
+                );"#
+                ).execute(&pool2).await.unwrap();
 
             Some(pool2)
         });
