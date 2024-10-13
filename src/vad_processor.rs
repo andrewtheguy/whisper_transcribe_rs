@@ -151,11 +151,9 @@ where
                 //num += 1;
             }
         });
-        s.spawn(move || {
+       
+        streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
 
-            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
-
-        });
     });
 
     Ok(())
