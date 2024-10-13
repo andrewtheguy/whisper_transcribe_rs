@@ -63,7 +63,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
     let mut total_bytes_in_buffer = 0;
 
     loop {
-        // don't allow live stream to be too backed up
+        // don't allow live stream (url with unlimited duration) to be too backed up
         if is_live_stream && tx.is_full() {
             panic!("Channel is full for livestream, transcribe thread not being able to catch up, aborting");
         }
