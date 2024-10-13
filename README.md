@@ -8,6 +8,11 @@ need to install ffmpeg separately
 cargo run -- config.toml 2> >(rotatelogs -n 5 ./tmp/output.log 1M >&2)
 ```
 
+set postgres password:
+```
+cargo run --example set_pg_key_ring_password
+```
+
 windows:
 ```
 cargo run -- config.toml 2> NUL
