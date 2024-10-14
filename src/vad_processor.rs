@@ -257,7 +257,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                 content TEXT NOT NULL
                 );"#
                 ).execute(&pool2).await?;
-            sqlx::query(r#"create index transcript_show_name_idx ON transcripts (show_name);"#
+            sqlx::query(r#"create index if not exists transcript_show_name_idx ON transcripts (show_name);"#
                 ).execute(&pool2).await?;
 
             Ok::<Option<Pool<_>>, Box<dyn std::error::Error>>(Some(pool2))
