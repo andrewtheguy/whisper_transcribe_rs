@@ -3,15 +3,18 @@
 //! The input data is recorded to "$CARGO_MANIFEST_DIR/recorded.wav".
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{BufferSize, StreamConfig, SupportedStreamConfig, SupportedStreamConfigRange};
+use cpal::{BufferSize, SampleRate, StreamConfig, SupportedStreamConfig, SupportedStreamConfigRange};
 use crossbeam::channel::Sender;
 use ort::Output;
+use tokio_util::bytes::buf;
 use std::fs::File;
 use std::io::BufWriter;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::Duration;
 use dasp_sample::{Sample, ToSample};
+
+use samplerate::{convert, ConverterType};
 
 use crate::sample;
 
@@ -55,11 +58,31 @@ pub fn record(tx: &'static Sender<Vec<i16>>,sample_size: usize) -> Result<(), Bo
 
     println!("Input device: {}", device.name()?);
 
+    let mut supported = device.supported_input_configs()?;
+    let supported_config = if let Some(config) = supported.next() {
+        println!("supported input config: {:?}", &config);
+        config
+    } else {
+        return Err("Failed to get supported input config".into());
+    };
 
+    if supported_config.max_sample_rate() < cpal::SampleRate(16000) {
+        return Err("max sample rate is less than 16000".into());
+    }
+    
+    let mut sample_rate = supported_config.min_sample_rate();
+
+    // just hack it with a number that divides evenly with 16000
+    if sample_rate.0 > 16000 {
+        sample_rate = cpal::SampleRate(48000);
+    }
+
+    let buffer_size = sample_rate.0/16000 * sample_size as u32;
+    
     let config = StreamConfig {
          channels: 1,
-         sample_rate: cpal::SampleRate(16000), 
-         buffer_size: BufferSize::Fixed(sample_size as u32) };
+         sample_rate: sample_rate, 
+         buffer_size: BufferSize::Fixed(buffer_size) };
     
     //eprintln!("Default input config: {:?}", config);
 
@@ -69,7 +92,7 @@ pub fn record(tx: &'static Sender<Vec<i16>>,sample_size: usize) -> Result<(), Bo
 
     let stream = device.build_input_stream(
             &config.into(),
-            move |data: &[f32], _: &_| write_input_data::<f32>(data,&tx),
+            move |data: &[f32], _: &_| write_input_data(data,sample_rate,&tx),
             err_fn,
             None,
         )?;
@@ -83,15 +106,17 @@ pub fn record(tx: &'static Sender<Vec<i16>>,sample_size: usize) -> Result<(), Bo
     Ok(())
 }
 
-fn write_input_data<T>(input: &[T], tx: &Sender<Vec<i16>>)
-where
-    T: Sample + ToSample<i16> + Copy,
+fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Vec<i16>>)
 {
-    eprintln!("input len: {}", input.len());
-
+    let resampled: Vec<f32>= if sample_rate.0 > 16000 {
+    // Resample the input to 16000hz.
+      convert(sample_rate.0, 16000, 1, ConverterType::SincBestQuality, input).unwrap()
+    }else{
+        input.to_vec()
+    };
     
-    let output: Vec<i16> = input.iter().map(|&x| x.to_sample::<i16>()).collect::<Vec<i16>>();
-        
+    let output: Vec<i16> = resampled.iter().map(|&x| x.to_sample::<i16>()).collect::<Vec<i16>>();
+    eprintln!("output len: {}", output.len());
     tx.send(output).unwrap();
     
 }
