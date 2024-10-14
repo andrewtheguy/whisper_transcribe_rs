@@ -21,6 +21,22 @@ use chrono::Utc;
 
 use crate::utils::build_current_thread_runtime;
 
+use std::sync::LazyLock;
+
+struct ChannelPair {
+    tx: crossbeam::channel::Sender<Vec<i16>>,
+    rx: crossbeam::channel::Receiver<Vec<i16>>,
+}
+
+// n.b. static items do not call [`Drop`] on program termination, so this won't be deallocated.
+// this is fine, as the OS can deallocate the terminated program faster than we can free memory
+// but tools like valgrind might report "memory leaks" as it isn't obvious this is intentional.
+static MIC_CHANNEL_PAIR: LazyLock<ChannelPair> = LazyLock::new(|| {
+    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    ChannelPair{tx,rx}
+});
+
+
 enum State {
     NoSpeech,
     HasSpeech,
@@ -45,14 +61,17 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
 
-fn process_buffer_with_vad<F>(url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+fn process_buffer_with_vad<E,F>(pair: &ChannelPair, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: FnMut(&Vec<i16>) + std::marker::Send
+    E: FnOnce(&crossbeam::channel::Sender<Vec<i16>>) + std::marker::Send,
+    F: FnMut(&Vec<i16>) + std::marker::Send,
 {
     //let target_sample_rate: i32 = 16000;
 
+    //let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
-    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    let tx = &pair.tx;
+    let rx = &pair.rx;
 
     let mut buf:Vec<i16> = Vec::new();
     //let mut num = 1;
@@ -132,7 +151,7 @@ where
                             eprintln!("Transitioning from speech to no speech");
                             buf.extend(&samples);
                             //save the buffer if not empty
-                            f(&buf);
+                            output_callback(&buf);
                             buf.clear();
                             prev_samples.clear();
                         }
@@ -145,14 +164,16 @@ where
             };
 
             if buf.len() > 0 {
-                f(&buf);
+                output_callback(&buf);
                 buf.clear();
                 //num += 1;
             }
         });
         s.spawn(move || {
-            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
-        });
+                input_callback(&tx);
+                //streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+            }
+            );
     });
 
     Ok(())
@@ -211,7 +232,15 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
         num += 1;
     };
 
-    process_buffer_with_vad(url,closure_annotated)?;
+    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+
+    let pair = ChannelPair{tx,rx};
+
+    process_buffer_with_vad(&pair,
+        |tx| {
+            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+        },
+        closure_annotated)?;
 
     Ok(())
 }
@@ -367,7 +396,15 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     //let mut model = get_vad();
 
-    process_buffer_with_vad(url,closure_annotated)?;
+    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+
+    let pair = ChannelPair{tx,rx};
+
+    process_buffer_with_vad(&pair,
+        |tx| {
+            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+        },
+        closure_annotated)?;
 
     Ok(())
 }
