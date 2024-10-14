@@ -25,7 +25,7 @@ struct FFProbeOutput {
 
 
 
-fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Vec<i16>>,is_live_stream: bool) -> Result<(), Box<dyn std::error::Error>>
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Option<Vec<i16>>>,is_live_stream: bool) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -76,7 +76,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
             // If there's any remaining data in the buffer, process it as the last chunk
             if total_bytes_in_buffer > 0 {
                 let slice = &buffer[..total_bytes_in_buffer];
-                tx.send(convert_to_i16_vec(slice))?;
+                tx.send(Some(convert_to_i16_vec(slice)))?;
             }
             break;
         }
@@ -86,7 +86,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
         // If the buffer is full, process it and reset the buffer
         if total_bytes_in_buffer == buffer.len() {
             println!("{}",json!({"channel_size": tx.len()}).to_string());
-            tx.send(convert_to_i16_vec(&buffer))?;
+            tx.send(Some(convert_to_i16_vec(&buffer)))?;
             total_bytes_in_buffer = 0; // Reset the buffer
         }
     }
@@ -98,14 +98,11 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
         return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
     }
 
-    // Send an empty buffer to signal the end of the stream
-    tx.send(Vec::new())?;
-
     Ok(())
 }
 
 
-pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>>
+pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Option<Vec<i16>>>) -> Result<(), Box<dyn std::error::Error>>
 {
 
     // Run ffmpeg to get raw PCM (s16le) data at 16kHz
@@ -137,6 +134,9 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
     if let Some(duration) = ffprobe_output.format.duration {
         eprintln!("Duration: {} seconds", duration);
         streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx, false)?;
+
+        // Send none to signal the end of the stream
+        tx.send(None)?;
     } else {
         eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {

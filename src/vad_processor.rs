@@ -7,6 +7,7 @@ use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::download_utils::{get_whisper_model, get_silero_model};
 use crate::key_ring_utils::get_password;
+use crate::sample;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
@@ -26,15 +27,15 @@ use std::sync::LazyLock;
 use crate::record_audio::{record_from_mic};
 
 struct ChannelPair {
-    tx: crossbeam::channel::Sender<Vec<i16>>,
-    rx: crossbeam::channel::Receiver<Vec<i16>>,
+    tx: crossbeam::channel::Sender<Option<Vec<i16>>>,
+    rx: crossbeam::channel::Receiver<Option<Vec<i16>>>,
 }
 
 // n.b. static items do not call [`Drop`] on program termination, so this won't be deallocated.
 // this is fine, as the OS can deallocate the terminated program faster than we can free memory
 // but tools like valgrind might report "memory leaks" as it isn't obvious this is intentional.
 static MIC_CHANNEL_PAIR: LazyLock<ChannelPair> = LazyLock::new(|| {
-    let (tx, rx) = unbounded::<Vec<i16>>().try_into().unwrap();
+    let (tx, rx) = unbounded::<Option<Vec<i16>>>().try_into().unwrap();
     ChannelPair{tx,rx}
 });
 
@@ -63,7 +64,7 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
 
-fn process_buffer_with_vad<E,F>(rx: &Receiver<Vec<i16>>, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
+fn process_buffer_with_vad<E,F>(rx: &Receiver<Option<Vec<i16>>>, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
 where
     E: FnOnce() + std::marker::Send,
     F: FnMut(&Vec<i16>) + std::marker::Send,
@@ -100,11 +101,8 @@ where
 
             let mut model = get_vad().unwrap();
             for samples in rx {
+                if let Some(samples)=samples {
                 eprintln!("Received sample size: {}", samples.len());
-                if samples.len() == 0 {
-                    eprintln!("Received sample size which should mean end of stream");
-                    break;
-                }
                 //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
                 //let sample2 = samples.clone();
                 //silero.reset();
@@ -165,7 +163,10 @@ where
                 }
 
                 prev_state = State::convert(has_speech);
-
+            } else {
+                eprintln!("Received end of stream signal");
+                break;
+            }
 
             };
 
@@ -240,7 +241,7 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
         num += 1;
     };
 
-    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    let (tx, rx) = bounded::<Option<Vec<i16>>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
 
     process_buffer_with_vad(&rx,
@@ -425,7 +426,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         //     closure_annotated)?;
     } else {
 
-        let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+        let (tx, rx) = bounded::<Option<Vec<i16>>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
         process_buffer_with_vad(&rx,
             || {

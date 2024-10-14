@@ -3,20 +3,14 @@
 //! The input data is recorded to "$CARGO_MANIFEST_DIR/recorded.wav".
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{BufferSize, SampleRate, StreamConfig, SupportedStreamConfig, SupportedStreamConfigRange};
+use cpal::{BufferSize, SampleRate, StreamConfig};
 use crossbeam::channel::Sender;
-use ort::Output;
-use tokio_util::bytes::buf;
-use std::fs::File;
-use std::io::BufWriter;
-use std::sync::{Arc, Mutex};
-use std::thread::sleep;
-use std::time::Duration;
-use dasp_sample::{Sample, ToSample};
-
+use dasp_sample::{Sample};
 use samplerate::{convert, ConverterType};
+use std::io::{self, Read};
+use console::Term;
 
-pub fn record_from_mic(tx: &'static Sender<Vec<i16>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
+pub fn record_from_mic(tx: &'static Sender<Option<Vec<i16>>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
     // Conditionally compile with jack if the feature is specified.
     #[cfg(all(
         any(
@@ -97,15 +91,27 @@ pub fn record_from_mic(tx: &'static Sender<Vec<i16>>,sample_size: usize) -> Resu
 
 
     stream.play()?;
+
+    println!("Press 'q' to quit:");
+
+    let stdout = Term::buffered_stdout();
+
     loop {
-        sleep(Duration::from_secs(10));
-        eprintln!("recording looping still");
+        let char = stdout.read_char()?;
+
+        if char == 'q' {
+            println!("Exiting...");
+            break;
+        }
+
+        //println!("You entered: {}", char);
     }
+    tx.send(None)?;
     Ok(())
 }
 
 
-fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Vec<i16>>)
+fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Option<Vec<i16>>>)
 {
     let resampled: Vec<f32>= if sample_rate.0 > 16000 {
     // Resample the input to 16000hz.
@@ -116,6 +122,6 @@ fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Vec<i16>>
     
     let output: Vec<i16> = resampled.iter().map(|&x| x.to_sample::<i16>()).collect::<Vec<i16>>();
     eprintln!("output len: {}", output.len());
-    tx.send(output).unwrap();
+    tx.send(Some(output)).unwrap();
     
 }
