@@ -101,6 +101,10 @@ where
             let mut model = get_vad().unwrap();
             for samples in rx {
                 eprintln!("Received sample size: {}", samples.len());
+                if samples.len() == 0 {
+                    eprintln!("Received sample size which should mean end of stream");
+                    break;
+                }
                 //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
                 //let sample2 = samples.clone();
                 //silero.reset();
@@ -165,17 +169,19 @@ where
 
             };
 
+            eprintln!("End of stream");
+
             if buf.len() > 0 {
                 output_callback(&buf);
                 buf.clear();
                 //num += 1;
             }
+            eprintln!("finished processing");
         });
         s.spawn(move || {
                 input_callback();
                 //streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
-            }
-            );
+        });
     });
 
     Ok(())
@@ -243,6 +249,7 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
         },
         closure_annotated)?;
 
+        eprintln!("finished streaming to file");
     Ok(())
 }
 
