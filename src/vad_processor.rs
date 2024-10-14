@@ -1,4 +1,4 @@
-use crossbeam::channel::bounded;
+use crossbeam::channel::{bounded, Receiver};
 use hound::{self};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 //use sqlx::sqlite::{SqliteConnectOptions};
@@ -22,6 +22,8 @@ use chrono::Utc;
 use crate::utils::build_current_thread_runtime;
 
 use std::sync::LazyLock;
+
+use crate::mic_input::record;
 
 struct ChannelPair {
     tx: crossbeam::channel::Sender<Vec<i16>>,
@@ -61,17 +63,17 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
 
-fn process_buffer_with_vad<E,F>(pair: &ChannelPair, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
+fn process_buffer_with_vad<E,F>(rx: &Receiver<Vec<i16>>, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    E: FnOnce(&crossbeam::channel::Sender<Vec<i16>>) + std::marker::Send,
+    E: FnOnce() + std::marker::Send,
     F: FnMut(&Vec<i16>) + std::marker::Send,
 {
     //let target_sample_rate: i32 = 16000;
 
     //let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
-    let tx = &pair.tx;
-    let rx = &pair.rx;
+    //let tx = &pair.tx;
+    //let rx = &pair.rx;
 
     let mut buf:Vec<i16> = Vec::new();
     //let mut num = 1;
@@ -170,7 +172,7 @@ where
             }
         });
         s.spawn(move || {
-                input_callback(&tx);
+                input_callback();
                 //streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
             }
             );
@@ -234,10 +236,9 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
 
     let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
-    let pair = ChannelPair{tx,rx};
 
-    process_buffer_with_vad(&pair,
-        |tx| {
+    process_buffer_with_vad(&rx,
+         || {
             streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
         },
         closure_annotated)?;
@@ -250,7 +251,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     let rt = build_current_thread_runtime()?;
 
-    let url = config.url.as_str();
+    let url: &str = config.url.as_str();
     let mut pool: Option<Pool<_>> = None;
 
     if let Some(database_config) = &config.database_config {
@@ -396,15 +397,22 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     //let mut model = get_vad();
 
-    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    if url == "microphone://default" {
+        let mic_channel_pair = &*MIC_CHANNEL_PAIR;
+        process_buffer_with_vad(&mic_channel_pair.rx,
+            || {
+                record(&mic_channel_pair.tx).unwrap();
+            },
+            closure_annotated)?;
+    } else {
 
-    let pair = ChannelPair{tx,rx};
+        let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
-    process_buffer_with_vad(&pair,
-        |tx| {
-            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
-        },
-        closure_annotated)?;
+        process_buffer_with_vad(&rx,
+            || {
+                streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+            },closure_annotated)?;
 
+    }
     Ok(())
 }

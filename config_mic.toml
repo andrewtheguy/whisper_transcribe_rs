@@ -1,7 +1,7 @@
-url = "http://mobilewzrc.serverroom.us:6916/"
-language="yue"
+url = "microphone://default"
+language="en"
 operation = "transcribe" # or save_to_file
-show_name = "am1430"
+show_name = "microphone"
 
 [database_config]
 database_host = "10.22.33.120"

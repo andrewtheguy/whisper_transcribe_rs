@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::sync::{Arc, Mutex};
 
-fn record(sample_size: usize, tx: &'static Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn record(tx: &'static Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>> {
     // Conditionally compile with jack if the feature is specified.
     #[cfg(all(
         any(
