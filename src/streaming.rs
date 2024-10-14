@@ -143,7 +143,5 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
         }
     }
 
-    eprintln!("ffprobe exited with status: {}", status);
-
     Ok(())
 }
