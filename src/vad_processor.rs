@@ -23,7 +23,7 @@ use crate::utils::build_current_thread_runtime;
 
 use std::sync::LazyLock;
 
-use crate::mic_input::record;
+use crate::mic_input::record_from_mic;
 
 struct ChannelPair {
     tx: crossbeam::channel::Sender<Vec<i16>>,
@@ -402,7 +402,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         process_buffer_with_vad(&mic_channel_pair.rx,
             || {
                 //loop {
-                record(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
+                record_from_mic(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
                 //}
             },
             closure_annotated)?;

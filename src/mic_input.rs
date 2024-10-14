@@ -18,7 +18,7 @@ use samplerate::{convert, ConverterType};
 
 use crate::sample;
 
-pub fn record(tx: &'static Sender<Vec<i16>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
+pub fn record_from_mic(tx: &'static Sender<Vec<i16>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
     // Conditionally compile with jack if the feature is specified.
     #[cfg(all(
         any(
