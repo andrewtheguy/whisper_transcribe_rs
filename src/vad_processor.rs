@@ -23,7 +23,7 @@ use crate::utils::build_current_thread_runtime;
 
 use std::sync::LazyLock;
 
-use crate::record_audio::{record_computer_output, record_from_mic};
+use crate::record_audio::{record_from_mic};
 
 struct ChannelPair {
     tx: crossbeam::channel::Sender<Vec<i16>>,
@@ -414,14 +414,15 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
             },
             closure_annotated)?;
     }else if url == "audio_output://default" {
-        let mic_channel_pair = &*MIC_CHANNEL_PAIR;
-        process_buffer_with_vad(&mic_channel_pair.rx,
-            || {
-                //loop {
-                record_computer_output(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
-                //}
-            },
-            closure_annotated)?;
+        return Err("audio_output://default not supported".into());
+        // let mic_channel_pair = &*MIC_CHANNEL_PAIR;
+        // process_buffer_with_vad(&mic_channel_pair.rx,
+        //     || {
+        //         //loop {
+        //         record_computer_output(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
+        //         //}
+        //     },
+        //     closure_annotated)?;
     } else {
 
         let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
