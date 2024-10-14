@@ -16,6 +16,7 @@ pub struct Config {
     pub database_config: Option<DatabaseConfig>,
     pub language: String,
     pub operation: String, //should be enum
+    pub show_name: String, // maybe required only if database is enabled
    //port: Option<u16>,
    //keys: Keys,
 }

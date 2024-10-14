@@ -252,9 +252,12 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
             ).await?;
             sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
                 id serial PRIMARY KEY,
+                show_name varchar(255) NOT NULL,
                 "timestamp" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
                 content TEXT NOT NULL
                 );"#
+                ).execute(&pool2).await?;
+            sqlx::query(r#"create index transcript_show_name_idx ON transcripts (show_name);"#
                 ).execute(&pool2).await?;
 
             Ok::<Option<Pool<_>>, Box<dyn std::error::Error>>(Some(pool2))
@@ -335,13 +338,15 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         };
         if let Some(pool) = &pool {
             rt.block_on(async {
-                let sql = r#"INSERT INTO transcripts ("timestamp", content) VALUES ($1, $2)"#;
+                let sql = r#"INSERT INTO transcripts (show_name,"timestamp", content) VALUES ($1, $2, $3)"#;
                 //eprint!("{}", sql);
                 sqlx::query(
                     sql,
-                ).bind(current_timestamp)
-                    .bind(db_save_text)
-                    .execute(pool).await?;
+                )
+                .bind(config.show_name.as_str())
+                .bind(current_timestamp)
+                .bind(db_save_text)
+                .execute(pool).await?;
                 Ok::<(), Box<dyn std::error::Error>>(())    
             }).unwrap();
         }

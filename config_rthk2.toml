@@ -3,11 +3,12 @@ url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8
 database_name = "example_rthk2"
 language="yue"
 operation = "transcribe" # or save_to_file
+show_name = "rthk2"
 
 [database_config]
 database_host = "10.22.33.120"
 database_user = "postgres"
 database_port = 5432
 database_password_key = "postgres_portainer"
-database_name = "example_rthk2"
+database_name = "whisper_transcribe_rs_v1"
 require_ssl=false
