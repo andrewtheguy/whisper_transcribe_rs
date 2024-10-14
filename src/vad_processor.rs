@@ -401,7 +401,9 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         let mic_channel_pair = &*MIC_CHANNEL_PAIR;
         process_buffer_with_vad(&mic_channel_pair.rx,
             || {
-                record(&mic_channel_pair.tx).unwrap();
+                //loop {
+                record(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
+                //}
             },
             closure_annotated)?;
     } else {

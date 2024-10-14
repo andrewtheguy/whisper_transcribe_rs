@@ -3280,6 +3280,7 @@ dependencies = [
  "clap",
  "cpal",
  "crossbeam",
+ "dasp_sample",
  "dirs",
  "fs2",
  "hound",

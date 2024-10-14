@@ -3,13 +3,19 @@
 //! The input data is recorded to "$CARGO_MANIFEST_DIR/recorded.wav".
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{FromSample, Sample};
+use cpal::{BufferSize, StreamConfig, SupportedStreamConfig, SupportedStreamConfigRange};
 use crossbeam::channel::Sender;
+use ort::Output;
 use std::fs::File;
 use std::io::BufWriter;
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
+use std::time::Duration;
+use dasp_sample::{Sample, ToSample};
 
-pub fn record(tx: &'static Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::Error>> {
+use crate::sample;
+
+pub fn record(tx: &'static Sender<Vec<i16>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
     // Conditionally compile with jack if the feature is specified.
     #[cfg(all(
         any(
@@ -49,10 +55,13 @@ pub fn record(tx: &'static Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::E
 
     println!("Input device: {}", device.name()?);
 
-    let config = device
-        .default_input_config()
-        .expect("Failed to get default input config");
-    eprintln!("Default input config: {:?}", config);
+
+    let config = StreamConfig {
+         channels: 1,
+         sample_rate: cpal::SampleRate(16000), 
+         buffer_size: BufferSize::Fixed(sample_size as u32) };
+    
+    //eprintln!("Default input config: {:?}", config);
 
     let err_fn = move |err| {
         eprintln!("an error occurred on stream: {}", err);
@@ -60,13 +69,29 @@ pub fn record(tx: &'static Sender<Vec<i16>>) -> Result<(), Box<dyn std::error::E
 
     let stream = device.build_input_stream(
             &config.into(),
-            move |data: &[i16], _: &_| {
-                tx.send(data.to_vec()).unwrap();
-            },
+            move |data: &[f32], _: &_| write_input_data::<f32>(data,&tx),
             err_fn,
             None,
         )?;
-    stream.play()?;
 
+
+    stream.play()?;
+    loop {
+        sleep(Duration::from_secs(10));
+        eprintln!("recording looping still");
+    }
     Ok(())
+}
+
+fn write_input_data<T>(input: &[T], tx: &Sender<Vec<i16>>)
+where
+    T: Sample + ToSample<i16> + Copy,
+{
+    eprintln!("input len: {}", input.len());
+
+    
+    let output: Vec<i16> = input.iter().map(|&x| x.to_sample::<i16>()).collect::<Vec<i16>>();
+        
+    tx.send(output).unwrap();
+    
 }
