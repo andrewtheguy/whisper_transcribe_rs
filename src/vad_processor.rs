@@ -11,6 +11,7 @@ use crate::sample;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
+use core::panic;
 use std::thread;
 use serde_json::json;
 
@@ -40,16 +41,16 @@ static MIC_CHANNEL_PAIR: LazyLock<ChannelPair> = LazyLock::new(|| {
 });
 
 
-enum State {
+enum SpeechTag {
     NoSpeech,
     HasSpeech,
 }
 
-impl State {
-    fn convert(has_speech: bool) -> State {
+impl SpeechTag {
+    fn convert(has_speech: bool) -> SpeechTag {
         match has_speech {
-            true => State::HasSpeech,
-            _ => State::NoSpeech,
+            true => SpeechTag::HasSpeech,
+            _ => SpeechTag::NoSpeech,
         }
     }
 }
@@ -80,6 +81,7 @@ where
     //let mut num = 1;
 
     let min_speech_duration_seconds = 3.0;
+    let max_speech_duration_seconds = 60.0;
 
     //let mut prev_sample:Option<Vec<i16>> = None;
 
@@ -95,7 +97,7 @@ where
     thread::scope(|s| {
         s.spawn(move || {
 
-            let mut prev_state = State::NoSpeech;
+            let mut prev_tag = SpeechTag::NoSpeech;
 
             let mut has_speech;
 
@@ -122,8 +124,8 @@ where
                     }
 
                     assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
-                    match prev_state {
-                    State::NoSpeech => {
+                    match prev_tag {
+                    SpeechTag::NoSpeech => {
                         if has_speech {
                             eprintln!("Transitioning from no speech to speech");
                             // add previous sample if it exists
@@ -142,8 +144,12 @@ where
                             prev_samples.extend(samples.iter().cloned());
                         }
                     },
-                    State::HasSpeech => {
-                        if seconds < min_speech_duration_seconds {
+                    SpeechTag::HasSpeech => {
+                        if seconds > max_speech_duration_seconds {
+                            panic!("has speech > max_seconds {}, should treat as no speech and reset state but currently doesn't support reset state yey", seconds);
+                            //eprintln!("override to to no speech because seconds > max_seconds {}", seconds);
+                            //has_speech = false;
+                        } else if seconds < min_speech_duration_seconds {
                             eprintln!("override to Continue to has speech because seconds < min_seconds {}", seconds);
                             has_speech = true;
                         }
@@ -162,7 +168,7 @@ where
                     }
                 }
 
-                prev_state = State::convert(has_speech);
+                prev_tag = SpeechTag::convert(has_speech);
             } else {
                 eprintln!("Received end of stream signal");
                 break;
