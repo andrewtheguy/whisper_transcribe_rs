@@ -4,6 +4,7 @@ use serde_json::json;
 use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
+use read_chunks::ReadExt;
 
 fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
     let mut vec = Vec::with_capacity(buf.len() / 2); // Allocate space for i16 values
@@ -59,36 +60,18 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
     //let one_second: usize = (target_sample_rate * 2 * 1).try_into().unwrap(); 
     // Buffer for reading 16,000 * 2 bytes
 
-    let mut buffer = vec![0u8; sample_size*2];
-    let mut total_bytes_in_buffer = 0;
+    //let mut buffer = vec![0u8; sample_size*2];
 
-    loop {
+
+    while let Some(chunk) = reader.read_chunks(sample_size*2).next_chunk() {
         // don't allow live stream (url with unlimited duration) to be too backed up
         if is_live_stream && tx.is_full() {
             panic!("Channel is full for livestream, transcribe thread not being able to catch up, aborting");
         }
-        // Read as much as possible to fill the remaining space in the buffer
-        let bytes_read = reader.read(&mut buffer[total_bytes_in_buffer..])?;
 
-        // If no more bytes are read, we're done
-        if bytes_read == 0 {
-            println!("{}",json!({"channel_size": tx.len()}).to_string());
-            // If there's any remaining data in the buffer, process it as the last chunk
-            if total_bytes_in_buffer > 0 {
-                let slice = &buffer[..total_bytes_in_buffer];
-                tx.send(Some(convert_to_i16_vec(slice)))?;
-            }
-            break;
-        }
+        println!("{}",json!({"channel_size": tx.len()}).to_string());
+        tx.send(convert_to_i16_vec(&chunk?))?;
 
-        total_bytes_in_buffer += bytes_read;
-
-        // If the buffer is full, process it and reset the buffer
-        if total_bytes_in_buffer == buffer.len() {
-            println!("{}",json!({"channel_size": tx.len()}).to_string());
-            tx.send(Some(convert_to_i16_vec(&buffer)))?;
-            total_bytes_in_buffer = 0; // Reset the buffer
-        }
     }
 
     // Wait for the child process to finish

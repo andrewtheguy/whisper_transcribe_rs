@@ -44,6 +44,7 @@ cpal = "0.15.3"
 dasp_sample = "0.11.0"
 samplerate = "0.2.4"
 console = "0.15.8"
+read_chunks = "0.2.0"
 #coreaudio-rs = "0.12.1"
 #keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
