@@ -1,5 +1,5 @@
 url = "microphone://default"
-language="en"
+language="yue" #cantonese
 operation = "transcribe" # or save_to_file
 show_name = "microphone"
 
