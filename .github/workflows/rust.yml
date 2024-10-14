@@ -7,22 +7,30 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+
   build-linux:
-    #needs: [build-macos, build-linux, build-windows]
 
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        run: cargo build --release
+      -   name: Install Docker Buildx
+          uses: docker/setup-buildx-action@v3
 
-      # Upload build artifacts (for example, `dist/` directory)
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Build2
+        uses: docker/build-push-action@v6
         with:
-          name: linux
-          path: target/release/whisper_transcribe_rs
+          file: Dockerfile
+          push: false
+          tags: user/app:latest
+          outputs: type=local,dest=target/linux
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Upload build artifacts (for example, `dist/` directory)
+      -   name: Upload artifacts
+          uses: actions/upload-artifact@v4
+          with:
+            name: linux_aarch64
+            path: target/linux/whisper_transcribe_rs
 
   build-linux-arm:
 
