@@ -178,10 +178,10 @@ where
             }
             eprintln!("finished processing");
         });
-        s.spawn(move || {
-                input_callback();
-                //streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
-        });
+        
+        input_callback();
+        //streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+        
     });
 
     Ok(())
