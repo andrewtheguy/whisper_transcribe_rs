@@ -5,12 +5,12 @@ need to install ffmpeg separately
 - create a config toml file
 - then run
 ```
-cargo run -- config.toml 2> >(rotatelogs -n 5 ./tmp/output.log 1M >&2)
+cargo run -- --config-file config.toml process-url 2> >(rotatelogs -n 5 ./tmp/output.log 1M >&2)
 ```
 
 set postgres password:
 ```
-cargo run -- config_knx.toml --set-password-only
+cargo run -- --config-file config_knx.toml set-db-password
 ```
 
 windows:
