@@ -19,9 +19,15 @@ cargo run -- config.toml 2> NUL
 ```
 - see config*.toml for config examples
 
+TODO:
+
 - still need improvement on silero vad to include clips before and after speech/no speech transitions
 
 - need to convert eprintln! to log!
+
+- better timestamp detection
+
+- find out why livestream sometimes dies without errors even if I have added an infinite loop on it
 
 build linux arm binary:
 
