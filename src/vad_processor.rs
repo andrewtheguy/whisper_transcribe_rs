@@ -140,15 +140,16 @@ where
                             // start to extend the buffer
                             buf.extend(&samples);
                         } else {
+                            // maybe reset silero state if no speech for too long
                             eprintln!("Still No Speech");
                             prev_samples.extend(samples.iter().cloned());
                         }
                     },
                     SpeechTag::HasSpeech => {
                         if seconds > max_speech_duration_seconds {
-                            panic!("has speech > max_seconds {}, should treat as no speech and perhaps reset state but currently doesn't support reset state yet", seconds);
-                            //eprintln!("override to to no speech because seconds > max_seconds {}", seconds);
-                            //has_speech = false;
+                            //maybe reset silero state
+                            eprintln!("override to no speech because seconds > max_seconds {}", seconds);
+                            has_speech = false;
                         } else if seconds < min_speech_duration_seconds {
                             eprintln!("override to Continue to has speech because seconds < min_seconds {}", seconds);
                             has_speech = true;
