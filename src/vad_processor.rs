@@ -1,4 +1,4 @@
-use crossbeam::channel::{bounded, Receiver};
+use crossbeam::channel::{bounded, unbounded, Receiver};
 use hound::{self};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 //use sqlx::sqlite::{SqliteConnectOptions};
@@ -34,7 +34,7 @@ struct ChannelPair {
 // this is fine, as the OS can deallocate the terminated program faster than we can free memory
 // but tools like valgrind might report "memory leaks" as it isn't obvious this is intentional.
 static MIC_CHANNEL_PAIR: LazyLock<ChannelPair> = LazyLock::new(|| {
-    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    let (tx, rx) = unbounded::<Vec<i16>>().try_into().unwrap();
     ChannelPair{tx,rx}
 });
 
