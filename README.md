@@ -29,6 +29,8 @@ TODO:
 
 - find out why livestream sometimes dies without errors even if I have added an infinite loop on it
 
+- should perhaps reset state if it continues to have speech or no speech for too long
+
 build linux arm binary:
 
 ```
