@@ -11,7 +11,7 @@ pub mod download_utils;
 pub mod key_ring_utils;
 mod utils;
 mod vad;
-mod mic_input;
+mod record_audio;
 
 pub fn convert_file_to_wave(input_file: &str, target_sample_rate: i32) -> Result<Vec<i16>, Box<dyn std::error::Error>> {
     // Path to the input file
