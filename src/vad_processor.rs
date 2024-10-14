@@ -146,7 +146,7 @@ where
                     },
                     SpeechTag::HasSpeech => {
                         if seconds > max_speech_duration_seconds {
-                            panic!("has speech > max_seconds {}, should treat as no speech and reset state but currently doesn't support reset state yey", seconds);
+                            panic!("has speech > max_seconds {}, should treat as no speech and perhaps reset state but currently doesn't support reset state yet", seconds);
                             //eprintln!("override to to no speech because seconds > max_seconds {}", seconds);
                             //has_speech = false;
                         } else if seconds < min_speech_duration_seconds {
