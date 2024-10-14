@@ -9,5 +9,5 @@ database_host = "10.22.33.120"
 database_user = "postgres"
 database_port = 5432
 database_password_key = "postgres_portainer"
-database_name = "example_am1430"
+database_name = "whisper_transcribe_rs_v1"
 require_ssl=false
