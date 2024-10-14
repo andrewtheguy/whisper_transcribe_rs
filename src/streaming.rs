@@ -70,7 +70,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
         }
 
         println!("{}",json!({"channel_size": tx.len()}).to_string());
-        tx.send(convert_to_i16_vec(&chunk?))?;
+        tx.send(Some(convert_to_i16_vec(&chunk?)))?;
 
     }
 
