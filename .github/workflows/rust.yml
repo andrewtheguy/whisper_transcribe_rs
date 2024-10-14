@@ -29,7 +29,7 @@ jobs:
       -   name: Upload artifacts
           uses: actions/upload-artifact@v4
           with:
-            name: linux_aarch64
+            name: linux_x86_64
             path: target/linux/whisper_transcribe_rs
 
   build-linux-arm:
