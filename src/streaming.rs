@@ -125,6 +125,7 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
 
     let status = output.status;
     if !status.success() {
+        eprintln!("ffmpeg failed with a non-zero exit code: {}", status);
         return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
     }
 
@@ -141,6 +142,8 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
             sleep(std::time::Duration::from_millis(500));
         }
     }
+
+    eprintln!("ffmpeg exited with status: {}", status);
 
     Ok(())
 }
