@@ -102,27 +102,27 @@ where
             let mut model = get_vad().unwrap();
             for samples in rx {
                 if let Some(samples)=samples {
-                eprintln!("Received sample size: {}", samples.len());
-                //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
-                //let sample2 = samples.clone();
-                //silero.reset();
-                //let mut rng = rand::thread_rng();
-                //let probability: f64 = rng.gen();
-                let probability = model.predict(samples.clone());
-                //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
-                eprintln!("buf.len() {}", buf.len());
-                let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
-                //eprintln!("len_after_samples / target_sample_rate {}",seconds);
+                    eprintln!("Received sample size: {}", samples.len());
+                    //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
+                    //let sample2 = samples.clone();
+                    //silero.reset();
+                    //let mut rng = rand::thread_rng();
+                    //let probability: f64 = rng.gen();
+                    let probability = model.predict(samples.clone());
+                    //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
+                    eprintln!("buf.len() {}", buf.len());
+                    let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
+                    //eprintln!("len_after_samples / target_sample_rate {}",seconds);
 
-                if probability > 0.5 {
-                    eprintln!("Chunk is speech: {}", probability);
-                    has_speech = true;
-                } else {
-                    has_speech = false;
-                }
+                    if probability > 0.5 {
+                        eprintln!("Chunk is speech: {}", probability);
+                        has_speech = true;
+                    } else {
+                        has_speech = false;
+                    }
 
-                assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
-                match prev_state {
+                    assert!(prev_samples.len()<=TARGET_SAMPLE_RATE as usize);
+                    match prev_state {
                     State::NoSpeech => {
                         if has_speech {
                             eprintln!("Transitioning from no speech to speech");
