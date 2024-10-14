@@ -1,4 +1,4 @@
-use crossbeam::channel::bounded;
+use crossbeam::channel::{bounded, unbounded, Receiver};
 use hound::{self};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 //use sqlx::sqlite::{SqliteConnectOptions};
@@ -20,6 +20,24 @@ use std::thread::available_parallelism;
 use chrono::Utc;
 
 use crate::utils::build_current_thread_runtime;
+
+use std::sync::LazyLock;
+
+use crate::record_audio::{record_from_mic};
+
+struct ChannelPair {
+    tx: crossbeam::channel::Sender<Vec<i16>>,
+    rx: crossbeam::channel::Receiver<Vec<i16>>,
+}
+
+// n.b. static items do not call [`Drop`] on program termination, so this won't be deallocated.
+// this is fine, as the OS can deallocate the terminated program faster than we can free memory
+// but tools like valgrind might report "memory leaks" as it isn't obvious this is intentional.
+static MIC_CHANNEL_PAIR: LazyLock<ChannelPair> = LazyLock::new(|| {
+    let (tx, rx) = unbounded::<Vec<i16>>().try_into().unwrap();
+    ChannelPair{tx,rx}
+});
+
 
 enum State {
     NoSpeech,
@@ -45,14 +63,17 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
 
-fn process_buffer_with_vad<F>(url: &str, mut f: F) -> Result<(), Box<dyn std::error::Error>>
+fn process_buffer_with_vad<E,F>(rx: &Receiver<Vec<i16>>, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
 where
-    F: FnMut(&Vec<i16>) + std::marker::Send
+    E: FnOnce() + std::marker::Send,
+    F: FnMut(&Vec<i16>) + std::marker::Send,
 {
     //let target_sample_rate: i32 = 16000;
 
+    //let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
-    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    //let tx = &pair.tx;
+    //let rx = &pair.rx;
 
     let mut buf:Vec<i16> = Vec::new();
     //let mut num = 1;
@@ -80,6 +101,10 @@ where
             let mut model = get_vad().unwrap();
             for samples in rx {
                 eprintln!("Received sample size: {}", samples.len());
+                if samples.len() == 0 {
+                    eprintln!("Received sample size which should mean end of stream");
+                    break;
+                }
                 //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
                 //let sample2 = samples.clone();
                 //silero.reset();
@@ -132,7 +157,7 @@ where
                             eprintln!("Transitioning from speech to no speech");
                             buf.extend(&samples);
                             //save the buffer if not empty
-                            f(&buf);
+                            output_callback(&buf);
                             buf.clear();
                             prev_samples.clear();
                         }
@@ -144,15 +169,19 @@ where
 
             };
 
+            eprintln!("End of stream");
+
             if buf.len() > 0 {
-                f(&buf);
+                output_callback(&buf);
                 buf.clear();
                 //num += 1;
             }
+            eprintln!("finished processing");
         });
-        s.spawn(move || {
-            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
-        });
+        
+        input_callback();
+        //streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+        
     });
 
     Ok(())
@@ -211,8 +240,16 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
         num += 1;
     };
 
-    process_buffer_with_vad(url,closure_annotated)?;
+    let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
+
+    process_buffer_with_vad(&rx,
+         || {
+            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+        },
+        closure_annotated)?;
+
+        eprintln!("finished streaming to file");
     Ok(())
 }
 
@@ -221,7 +258,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     let rt = build_current_thread_runtime()?;
 
-    let url = config.url.as_str();
+    let url: &str = config.url.as_str();
     let mut pool: Option<Pool<_>> = None;
 
     if let Some(database_config) = &config.database_config {
@@ -367,7 +404,34 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     //let mut model = get_vad();
 
-    process_buffer_with_vad(url,closure_annotated)?;
+    if url == "microphone://default" {
+        let mic_channel_pair = &*MIC_CHANNEL_PAIR;
+        process_buffer_with_vad(&mic_channel_pair.rx,
+            || {
+                //loop {
+                record_from_mic(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
+                //}
+            },
+            closure_annotated)?;
+    }else if url == "audio_output://default" {
+        return Err("audio_output://default not supported".into());
+        // let mic_channel_pair = &*MIC_CHANNEL_PAIR;
+        // process_buffer_with_vad(&mic_channel_pair.rx,
+        //     || {
+        //         //loop {
+        //         record_computer_output(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
+        //         //}
+        //     },
+        //     closure_annotated)?;
+    } else {
 
+        let (tx, rx) = bounded::<Vec<i16>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+
+        process_buffer_with_vad(&rx,
+            || {
+                streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+            },closure_annotated)?;
+
+    }
     Ok(())
 }

@@ -40,6 +40,10 @@ sqlx = { version = "0.8", features = [ "runtime-tokio", "sqlite", "postgres", "c
 chrono = "0.4.38"
 crossbeam = "0.8.4"
 fs2 = "0.4.3"
+cpal = "0.15.3"
+dasp_sample = "0.11.0"
+samplerate = "0.2.4"
+#coreaudio-rs = "0.12.1"
 #keyring = { version = "3", features = ["apple-native", "windows-native"] }
 
 [dependencies.whisper-rs]
