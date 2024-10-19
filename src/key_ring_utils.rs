@@ -2,13 +2,13 @@ use std::{collections::HashMap, fs::{self, File, Permissions}, io::{Read, Write}
 use fs2::FileExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-const PASSWORD_FOLDER: &str = "whisper_transcribe_rs";
+
+use crate::utils::get_config_dir;
 const PASSWORD_FILE: &str = ".db_password.json";
 
 pub fn set_password(key: &str, password: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let password_folder = dirs::config_local_dir().unwrap().join(PASSWORD_FOLDER);
+    let password_folder = get_config_dir()?;
     let password_file = password_folder.join(PASSWORD_FILE);
-    fs::create_dir_all(password_folder)?;
     let mut file = File::create(&password_file)?;
     FileExt::try_lock_exclusive(&file)?;
     #[cfg(unix)]
@@ -30,7 +30,7 @@ pub fn set_password(key: &str, password: &str) -> Result<(), Box<dyn std::error:
 }
 
 pub fn get_password(key: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let password_folder = dirs::config_local_dir().unwrap().join(PASSWORD_FOLDER);
+    let password_folder = get_config_dir()?;
     let password_file = password_folder.join(PASSWORD_FILE);
     if !password_file.exists() {
         return Err("Password file does not exist".into());

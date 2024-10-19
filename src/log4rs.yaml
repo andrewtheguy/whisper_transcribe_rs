@@ -1,9 +1,20 @@
 appenders:
-  my_console_appender:
-    kind: console
-    target: stderr
-    tty_only: false
+  file:
+    kind: rolling_file
+    path: "{{log_path}}"
+    #encoder:
+    #  pattern: "{d} - {l} - {m}{n}"
+    policy:
+      trigger:
+        kind: size
+        limit: 1mb
+      roller:
+        kind: fixed_window
+        base: 1
+        count: 5
+        pattern: "{{log_path}}.{}"
+
 root:
   level: info
   appenders:
-    - my_console_appender
+    - file

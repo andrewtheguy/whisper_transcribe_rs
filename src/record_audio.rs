@@ -6,6 +6,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use crossbeam::channel::Sender;
 use dasp_sample::{Sample};
+use log::{error, trace};
 use samplerate::{convert, ConverterType};
 use std::io::{self, Read};
 use console::Term;
@@ -76,10 +77,10 @@ pub fn record_from_mic(tx: &'static Sender<Option<Vec<i16>>>,sample_size: usize)
          sample_rate: sample_rate, 
          buffer_size: BufferSize::Fixed(buffer_size) };
     
-    //eprintln!("Default input config: {:?}", config);
+    //debug!("Default input config: {:?}", config);
 
     let err_fn = move |err| {
-        eprintln!("an error occurred on stream: {}", err);
+        error!("an error occurred on stream: {}", err);
     };
 
     let stream = device.build_input_stream(
@@ -121,7 +122,7 @@ fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Option<Ve
     };
     
     let output: Vec<i16> = resampled.iter().map(|&x| x.to_sample::<i16>()).collect::<Vec<i16>>();
-    eprintln!("output len: {}", output.len());
+    trace!("output len: {}", output.len());
     tx.send(Some(output)).unwrap();
     
 }

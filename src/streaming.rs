@@ -1,5 +1,7 @@
 use byteorder::{ByteOrder, LittleEndian};
+use chrono::Utc;
 use crossbeam::channel::Sender;
+use log::{debug, error, info, trace, warn};
 use serde_json::json;
 use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
 use serde::{Deserialize, Serialize};
@@ -37,6 +39,8 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
             //-drop_pkts_on_overflow 1 
             "-i", input_url,      // Input url
             "-attempt_recovery", "1",
+            "-hide_banner",
+            "-loglevel", "error",
             "-recovery_wait_time", "1",
             "-f", "s16le",         // Output format: raw PCM, signed 16-bit little-endian
             "-acodec", "pcm_s16le",// Audio codec: PCM 16-bit signed little-endian
@@ -47,6 +51,9 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
         .stdout(Stdio::piped())
         //.stderr(Stdio::null()) // Optional: Ignore stderr output
         .spawn()?;
+
+    let current_timestamp = Utc::now();
+    debug!("{}",json!({"start_timestamp": current_timestamp.to_rfc3339()}));
 
 
     // Get a handle to the stdout of the child process
@@ -69,14 +76,14 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
             panic!("Channel is full for livestream, transcribe thread not being able to catch up, aborting");
         }
 
-        println!("{}",json!({"channel_size": tx.len()}).to_string());
+        trace!("{}",json!({"channel_size": tx.len()}).to_string());
         tx.send(Some(convert_to_i16_vec(&chunk?)))?;
 
     }
 
     // Wait for the child process to finish
     let status = ffmpeg_process.wait()?;
-    eprintln!("ffmpeg exited with status: {}", status);
+    error!("ffmpeg exited with status: {}", status);
     if !status.success() {
         return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
     }
@@ -108,23 +115,23 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
 
     let status = output.status;
     if !status.success() {
-        eprintln!("ffprobe failed with a non-zero exit code: {}", status);
+        error!("ffprobe failed with a non-zero exit code: {}", status);
         return Err(format!("ffmpeg failed with a non-zero exit code {}", status.code().unwrap_or(-1)).into());
     }
 
 
     // Check if duration exists and print it
     if let Some(duration) = ffprobe_output.format.duration {
-        eprintln!("Duration: {} seconds", duration);
+        debug!("Duration: {} seconds", duration);
         streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx, false)?;
 
         // Send none to signal the end of the stream
         tx.send(None)?;
     } else {
-        eprintln!("No duration found, assuming stream is infinite and will restart on stream stop");
+        info!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {
             streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx,true)?;
-            eprintln!("stream_stopped, restarting");
+            warn!("stream_stopped, restarting");
             sleep(std::time::Duration::from_millis(500));
         }
     }

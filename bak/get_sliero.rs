@@ -9,7 +9,7 @@ async fn get_silero() -> silero::Silero {
     let file_name = get_filename_from_url(download_url).unwrap();
     let model_path = model_local_directory.join(file_name);
     if !model_path.exists() {
-        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
+        debug!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
         download_to_temp_and_move(download_url, model_path.to_str().unwrap()).await.unwrap();
     }
 
