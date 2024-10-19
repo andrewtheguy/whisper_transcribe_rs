@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::str;
 use read_chunks::ReadExt;
 
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{Sample, StreamConfig};
+
+
 fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
     let mut vec = Vec::with_capacity(buf.len() / 2); // Allocate space for i16 values
     for chunk in buf.chunks_exact(2) {
@@ -26,9 +30,57 @@ struct FFProbeOutput {
     format: FFProbeFormat,
 }
 
+fn setup_audio_play() -> Result<Sender<f32>, Box<dyn std::error::Error> > {
 
 
-fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Option<Vec<i16>>>,is_live_stream: bool) -> Result<(), Box<dyn std::error::Error>>
+    let (txaudio, rxaudio) = crossbeam::channel::unbounded::<f32>();
+
+    // Initialize the CPAL host
+    let host = cpal::default_host();
+
+    // Get the default output device
+    let output_device = host.default_output_device().ok_or("No output device available")?;
+    
+    // Get the default output format
+    let output_format = output_device.default_output_config()?;
+    println!("Default output format: {:?}", output_format);
+    
+    // Define the desired output configuration
+    let desired_config = StreamConfig {
+        channels: 1, // Mono
+        sample_rate: cpal::SampleRate(16_000), // 16 kHz
+        // set buffer size according to the output configuration
+        buffer_size: cpal::BufferSize::Default,
+    };
+
+    // Create a stream to play audio
+    let mut stream = output_device.build_output_stream(
+        &desired_config,
+        move |data: &mut [f32], _| {
+            for sample in data {
+                *sample = match rxaudio.recv() {
+                    Ok(sample) => sample,
+                    Err(_) => {
+                        eprintln!("Error reading from channel");
+                        return;
+                    },
+                };
+            }
+        },
+        |err| {
+            eprintln!("Error occurred on stream: {:?}", err);
+        },
+        None // None=blocking, Some(Duration)=timeout
+    )?;
+
+    // Start the stream
+    stream.play()?;
+
+    Ok(txaudio)
+}
+
+
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Option<Vec<i16>>>,is_live_stream: bool, txaudio: Option<&Sender<f32>>) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -77,8 +129,15 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
         }
 
         trace!("{}",json!({"channel_size": tx.len()}).to_string());
-        tx.send(Some(convert_to_i16_vec(&chunk?)))?;
+        let sample = convert_to_i16_vec(&chunk?);
 
+        if let Some(txaudio) = &txaudio {
+            for s in &sample {
+                let sample2: f32 = f32::from_sample(*s);
+                txaudio.send(sample2)?;
+            }
+        }
+        tx.send(Some(sample))?;
     }
 
     // Wait for the child process to finish
@@ -123,14 +182,17 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
     // Check if duration exists and print it
     if let Some(duration) = ffprobe_output.format.duration {
         debug!("Duration: {} seconds", duration);
-        streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx, false)?;
+        streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx, false,None)?;
 
         // Send none to signal the end of the stream
         tx.send(None)?;
     } else {
+
+        let txaudio = setup_audio_play()?;
+
         info!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {
-            streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx,true)?;
+            streaming_inner_loop(input_url, target_sample_rate, sample_size, &tx,true,Some(&txaudio))?;
             warn!("stream_stopped, restarting");
             sleep(std::time::Duration::from_millis(500));
         }
