@@ -1,5 +1,6 @@
 use std::fs;
 use std::process;
+use log::error;
 use whisper_transcribe_rs::key_ring_utils;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
@@ -92,6 +93,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
             log4rs::init_raw_config(config_log).unwrap();
         
+            //error!("test error");
+
             let operation = config.operation.as_str();
         
             match operation {
