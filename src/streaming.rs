@@ -1,5 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
-use chrono::Utc;
+use chrono::{DateTime, TimeZone, Utc};
 use crossbeam::channel::{Receiver, Sender};
 use log::{debug, error, info, trace, warn};
 use serde_json::json;
@@ -7,10 +7,16 @@ use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
 use read_chunks::ReadExt;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 
 use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, Stream};
 use cpal::{Sample, StreamConfig};
 
+pub struct Segment {
+    pub timestamp: i64,
+    pub samples: Vec<i16>,
+}
 
 fn convert_to_i16_vec(buf: &[u8]) -> Vec<i16> {
     let mut vec = Vec::with_capacity(buf.len() / 2); // Allocate space for i16 values
@@ -75,7 +81,7 @@ fn setup_audio_play(rxaudio: Receiver<f32>) -> Result<Stream, Box<dyn std::error
 }
 
 
-fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Option<Vec<i16>>>,is_live_stream: bool, txaudio: Option<&Sender<f32>>) -> Result<(), Box<dyn std::error::Error>>
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Option<Segment>>,is_live_stream: bool, txaudio: Option<&Sender<f32>>) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -116,6 +122,14 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 
     //let mut buffer = vec![0u8; sample_size*2];
 
+    let start_ts_millis = Utc::now().timestamp_millis();
+
+    let datetime = Utc.timestamp_millis_opt(start_ts_millis).unwrap();
+
+    eprintln!("Start ts: {}",datetime);
+
+    let mut num_samples = 0;
+
 
     while let Some(chunk_result) = reader.read_chunks(sample_size*2).next_chunk() {
         // don't allow live stream (url with unlimited duration) to be too backed up
@@ -129,8 +143,21 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 
         let sample = convert_to_i16_vec(&chunk);
 
+        num_samples = num_samples+sample.len();
+
+        let ts_new = num_samples as f64/target_sample_rate as f64 * 1000.0;
+
+        let cur_ts = start_ts_millis+ts_new.round() as i64;
+
+        //let datetime = Utc.timestamp_millis_opt(cur_ts).unwrap();
+
+        //eprintln!("cur_ts: {}",datetime);
+
         // operation thread
-        tx.send(Some(sample.clone()))?;
+        tx.send(Some(Segment{
+            timestamp: cur_ts,
+            samples: sample.clone(),
+        }))?;
 
         // play audio thread
         if let Some(txaudio) = &txaudio {
@@ -152,7 +179,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 }
 
 
-pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Option<Vec<i16>>>) -> Result<(), Box<dyn std::error::Error>>
+pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Option<Segment>>) -> Result<(), Box<dyn std::error::Error>>
 {
 
     // Run ffmpeg to get raw PCM (s16le) data at 16kHz
