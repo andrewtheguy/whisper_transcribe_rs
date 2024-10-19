@@ -1,4 +1,5 @@
 use byteorder::{ByteOrder, LittleEndian};
+use chrono::Utc;
 use crossbeam::channel::Sender;
 use serde_json::json;
 use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
@@ -37,6 +38,8 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
             //-drop_pkts_on_overflow 1 
             "-i", input_url,      // Input url
             "-attempt_recovery", "1",
+            "-hide_banner",
+            "-loglevel", "error",
             "-recovery_wait_time", "1",
             "-f", "s16le",         // Output format: raw PCM, signed 16-bit little-endian
             "-acodec", "pcm_s16le",// Audio codec: PCM 16-bit signed little-endian
@@ -47,6 +50,9 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
         .stdout(Stdio::piped())
         //.stderr(Stdio::null()) // Optional: Ignore stderr output
         .spawn()?;
+
+    let current_timestamp = Utc::now();
+    println!("{}",json!({"start_timestamp": current_timestamp.to_rfc3339()}));
 
 
     // Get a handle to the stdout of the child process

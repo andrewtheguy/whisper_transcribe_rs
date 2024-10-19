@@ -3334,6 +3334,7 @@ dependencies = [
  "dirs",
  "fs2",
  "hound",
+ "log",
  "log4rs",
  "ndarray",
  "ort",

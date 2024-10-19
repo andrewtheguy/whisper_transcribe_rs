@@ -5,11 +5,9 @@ use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
 use whisper_transcribe_rs::config::Config;
 use std::io::Write;
+//use whisper_transcribe_rs::log_builder::MyLoggerBuilder;
 
 use std::path::PathBuf;
-
-use log4rs;
-use serde_yaml;
 
 use clap::{Parser, Subcommand};
 
@@ -48,6 +46,22 @@ enum Commands {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+    // // Use the builder to dynamically set the log path, max size, and file count
+    // MyLoggerBuilder::new()
+    // .path("logs/dynamic_app.log")  // Specify custom log file path
+    // .max_size(1 * 1024 * 1024)    // Set max size to 1MB
+    // .file_count(5)                // Set max file count to 5
+    // .build();
+
+    let log_path = "logs/dynamic_app.log";
+
+    let template = include_str!("log4rs.yaml");
+    // Replace the placeholder with the actual log path
+    let config_str = template.replace("{{log_path}}", log_path);
+    let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
+    log4rs::init_raw_config(config_log).unwrap();
+
     let cli = Cli::parse();
     
     let config: Config = toml::from_str(fs::read_to_string(cli.config_file)?.as_str()).unwrap();
@@ -89,11 +103,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     stream_to_file(config)?;
                 },
                 "transcribe"=>{
-                    //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
-                    let config_str = include_str!("log4rs.yaml");
-                    let config_log = serde_yaml::from_str(config_str).unwrap();
-                    log4rs::init_raw_config(config_log).unwrap();
-                    //log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
                     whisper_rs::install_whisper_log_trampoline();
                     transcribe_url(config,num_transcribe_threads,model_download_url)?;
                 },

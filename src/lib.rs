@@ -9,6 +9,7 @@ pub mod vad_processor;
 pub mod config;
 pub mod download_utils;
 pub mod key_ring_utils;
+//pub mod log_builder;
 mod utils;
 mod vad;
 mod record_audio;

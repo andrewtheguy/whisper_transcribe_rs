@@ -368,7 +368,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         let current_timestamp = Utc::now();
 
         let line = json!({"start_timestamp":data.start_timestamp,
-            "end_timestamp":data.end_timestamp, "cur_ts": format!("{}",current_timestamp.format("%+")), "text":data.text});
+            "end_timestamp":data.end_timestamp, "cur_ts": format!("{}",current_timestamp.to_rfc3339()), "text":data.text});
         println!("{}", line);
 
         // only convert to traditional chinese when saving to db
