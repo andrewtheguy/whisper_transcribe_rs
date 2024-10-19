@@ -10,7 +10,7 @@ pub mod config;
 pub mod download_utils;
 pub mod key_ring_utils;
 //pub mod log_builder;
-mod utils;
+pub mod utils;
 mod vad;
 mod record_audio;
 //mod record_output;

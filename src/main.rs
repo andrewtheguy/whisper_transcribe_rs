@@ -4,6 +4,7 @@ use whisper_transcribe_rs::key_ring_utils;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
 use whisper_transcribe_rs::config::Config;
+use whisper_transcribe_rs::utils::get_config_dir;
 use std::io::Write;
 //use whisper_transcribe_rs::log_builder::MyLoggerBuilder;
 
@@ -47,21 +48,6 @@ enum Commands {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
-    // // Use the builder to dynamically set the log path, max size, and file count
-    // MyLoggerBuilder::new()
-    // .path("logs/dynamic_app.log")  // Specify custom log file path
-    // .max_size(1 * 1024 * 1024)    // Set max size to 1MB
-    // .file_count(5)                // Set max file count to 5
-    // .build();
-
-    let log_path = "logs/dynamic_app.log";
-
-    let template = include_str!("log4rs.yaml");
-    // Replace the placeholder with the actual log path
-    let config_str = template.replace("{{log_path}}", log_path);
-    let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
-    log4rs::init_raw_config(config_log).unwrap();
-
     let cli = Cli::parse();
     
     let config: Config = toml::from_str(fs::read_to_string(cli.config_file)?.as_str()).unwrap();
@@ -93,7 +79,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         
-            //let num_transcribe_threads = matches.get_one::<usize>("num-transcribe-threads");
+            let config_folder = get_config_dir()?;
+            eprint!("config_folder: {}", config_folder.to_str().unwrap());
+
+            let log_dir = config_folder.join("logs");
+            fs::create_dir_all(&log_dir)?;
+            let log_path = log_dir.join(format!("{}.log",config.show_name));
+
+            let template = include_str!("log4rs.yaml");
+            // Replace the placeholder with the actual log path
+            let config_str = template.replace("{{log_path}}", log_path.to_str().unwrap());
+            let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
+            log4rs::init_raw_config(config_log).unwrap();
         
             let operation = config.operation.as_str();
         
