@@ -117,22 +117,28 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
     //let mut buffer = vec![0u8; sample_size*2];
 
 
-    while let Some(chunk) = reader.read_chunks(sample_size*2).next_chunk() {
+    while let Some(chunk_result) = reader.read_chunks(sample_size*2).next_chunk() {
         // don't allow live stream (url with unlimited duration) to be too backed up
         if is_live_stream && tx.is_full() {
             panic!("Channel is full for livestream, transcribe thread not being able to catch up, aborting");
         }
 
         trace!("{}",json!({"channel_size": tx.len()}).to_string());
-        let sample = convert_to_i16_vec(&chunk?);
+        
+        let chunk = chunk_result?;
 
+        let sample = convert_to_i16_vec(&chunk);
+
+        // operation thread
+        tx.send(Some(sample.clone()))?;
+
+        // play audio thread
         if let Some(txaudio) = &txaudio {
-            for s in &sample {
-                let sample2: f32 = f32::from_sample(*s);
+            for s in sample {
+                let sample2: f32 = f32::from_sample(s);
                 txaudio.send(sample2)?;
             }
         }
-        tx.send(Some(sample))?;
     }
 
     // Wait for the child process to finish
@@ -184,7 +190,7 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
     } else {
 
 
-        let (txaudio, rxaudio) = crossbeam::channel::unbounded::<f32>();
+        let (txaudio, rxaudio) = crossbeam::channel::bounded::<f32>(1024);
 
         let stream = setup_audio_play(rxaudio)?;
 
