@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         
             let config_folder = get_config_dir()?;
-            eprint!("config_folder: {}", config_folder.to_str().unwrap());
+            eprintln!("config_folder: {}", config_folder.to_str().unwrap());
 
             let log_dir = config_folder.join("logs");
             fs::create_dir_all(&log_dir)?;
