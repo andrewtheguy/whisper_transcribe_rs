@@ -1,5 +1,6 @@
 use crossbeam::channel::{bounded, unbounded, Receiver};
 use hound::{self};
+use log::{debug, trace};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 //use sqlx::sqlite::{SqliteConnectOptions};
 use sqlx::Pool;
@@ -104,7 +105,7 @@ where
             let mut model = get_vad().unwrap();
             for samples in rx {
                 if let Some(samples)=samples {
-                    eprintln!("Received sample size: {}", samples.len());
+                    trace!("Received sample size: {}", samples.len());
                     //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
                     //let sample2 = samples.clone();
                     //silero.reset();
@@ -112,12 +113,12 @@ where
                     //let probability: f64 = rng.gen();
                     let probability = model.predict(samples.clone());
                     //let len_after_samples: i32 = (buf.len() + samples.len()).try_into().unwrap();
-                    eprintln!("buf.len() {}", buf.len());
+                    trace!("buf.len() {}", buf.len());
                     let seconds = buf.len() as f32 / TARGET_SAMPLE_RATE as f32;
-                    //eprintln!("len_after_samples / target_sample_rate {}",seconds);
+                    //trace!("len_after_samples / target_sample_rate {}",seconds);
 
                     if probability > 0.5 {
-                        eprintln!("Chunk is speech: {}", probability);
+                        trace!("Chunk is speech: {}", probability);
                         has_speech = true;
                     } else {
                         has_speech = false;
@@ -127,7 +128,7 @@ where
                     match prev_tag {
                     SpeechTag::NoSpeech => {
                         if has_speech {
-                            eprintln!("Transitioning from no speech to speech");
+                            trace!("Transitioning from no speech to speech");
                             // add previous sample if it exists
                             //if let Some(prev_sample2) = &prev_sample {
                             if prev_samples.len() > 0 {
@@ -141,25 +142,25 @@ where
                             buf.extend(&samples);
                         } else {
                             // maybe reset silero state if no speech for too long
-                            eprintln!("Still No Speech");
+                            trace!("Still No Speech");
                             prev_samples.extend(samples.iter().cloned());
                         }
                     },
                     SpeechTag::HasSpeech => {
                         if seconds > max_speech_duration_seconds {
                             //maybe reset silero state
-                            eprintln!("override to no speech because seconds > max_seconds {}", seconds);
+                            debug!("override to no speech because seconds > max_seconds {}", seconds);
                             has_speech = false;
                         } else if seconds < min_speech_duration_seconds {
-                            eprintln!("override to Continue to has speech because seconds < min_seconds {}", seconds);
+                            debug!("override to Continue to has speech because seconds < min_seconds {}", seconds);
                             has_speech = true;
                         }
                         if has_speech {
-                            eprintln!("Continue to has speech");
+                            trace!("Continue to has speech");
                             // continue to extend the buffer
                             buf.extend(&samples);
                         } else {
-                            eprintln!("Transitioning from speech to no speech");
+                            trace!("Transitioning from speech to no speech");
                             buf.extend(&samples);
                             //save the buffer if not empty
                             output_callback(&buf);
@@ -171,20 +172,20 @@ where
 
                 prev_tag = SpeechTag::convert(has_speech);
             } else {
-                eprintln!("Received end of stream signal");
+                debug!("Received end of stream signal");
                 break;
             }
 
             };
 
-            eprintln!("End of stream");
+            debug!("End of stream");
 
             if buf.len() > 0 {
                 output_callback(&buf);
                 buf.clear();
                 //num += 1;
             }
-            eprintln!("finished processing");
+            debug!("finished processing");
         });
         
         input_callback();
@@ -223,7 +224,7 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
     // Run the model.
     state.full(params.clone(), &audio[..]).expect("failed to run model");
 
-    //eprintln!("{}",state.full_n_segments().expect("failed to get number of segments"));
+    //debug!("{}",state.full_n_segments().expect("failed to get number of segments"));
     //samples.clear();
 }
 
@@ -257,7 +258,7 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
         },
         closure_annotated)?;
 
-        eprintln!("finished streaming to file");
+        debug!("finished streaming to file");
     Ok(())
 }
 

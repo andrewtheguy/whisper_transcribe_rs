@@ -1,3 +1,4 @@
+use log::debug;
 use reqwest::blocking::get;
 use sha1::{Sha1, Digest};
 use url::Url;
@@ -32,9 +33,9 @@ pub fn download_to_temp_and_move(url: &str, destination: &str) -> Result<(), Box
         //}
         //// Move the temp file to the destination only if the download was successful.
         temp_file.persist(destination)?; // Moves the file to the final destination
-        eprintln!("File downloaded and moved to: {}", destination);
+        debug!("File downloaded and moved to: {}", destination);
     } else {
-        println!("Failed to download the file. Status: {}", response.status());
+        return Err(format!("Failed to download the file. Status: {}", response.status()).into());
     }
 
     Ok(())
@@ -66,7 +67,7 @@ pub fn get_silero_model() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let file_name = get_filename_from_url(download_url)?;
     let model_path = model_local_directory.join(file_name);
     if !model_path.exists() {
-        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
+        debug!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
         download_to_temp_and_move(download_url, model_path.to_str().unwrap())?;
     }
     Ok(model_path)
@@ -79,7 +80,7 @@ pub fn get_whisper_model(download_url: &str) -> Result<PathBuf, Box<dyn std::err
     let file_name = get_filename_from_url(download_url)?;
     let model_path = model_local_directory.join(file_name);
     if !model_path.exists() {
-        eprintln!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
+        debug!("Downloading model from {} to {}", download_url, model_path.to_str().unwrap());
         download_to_temp_and_move(download_url, model_path.to_str().unwrap())?;
     }
     Ok(model_path)
