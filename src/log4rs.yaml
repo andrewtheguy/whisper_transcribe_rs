@@ -34,6 +34,6 @@ root:
 
 loggers:
   whisper_transcribe_rs:
-    level: trace
+    level: debug
     appenders:
       - file_rs

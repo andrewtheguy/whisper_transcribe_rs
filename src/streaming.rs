@@ -1,6 +1,6 @@
 use byteorder::{ByteOrder, LittleEndian};
 use chrono::Utc;
-use crossbeam::channel::Sender;
+use crossbeam::channel::{Receiver, Sender};
 use log::{debug, error, info, trace, warn};
 use serde_json::json;
 use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::str;
 use read_chunks::ReadExt;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{traits::{DeviceTrait, HostTrait, StreamTrait}, Stream};
 use cpal::{Sample, StreamConfig};
 
 
@@ -30,10 +30,8 @@ struct FFProbeOutput {
     format: FFProbeFormat,
 }
 
-fn setup_audio_play() -> Result<Sender<f32>, Box<dyn std::error::Error> > {
+fn setup_audio_play(rxaudio: Receiver<f32>) -> Result<Stream, Box<dyn std::error::Error> > {
 
-
-    let (txaudio, rxaudio) = crossbeam::channel::unbounded::<f32>();
 
     // Initialize the CPAL host
     let host = cpal::default_host();
@@ -73,10 +71,7 @@ fn setup_audio_play() -> Result<Sender<f32>, Box<dyn std::error::Error> > {
         None // None=blocking, Some(Duration)=timeout
     )?;
 
-    // Start the stream
-    stream.play()?;
-
-    Ok(txaudio)
+    Ok(stream)
 }
 
 
@@ -188,7 +183,13 @@ pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usiz
         tx.send(None)?;
     } else {
 
-        let txaudio = setup_audio_play()?;
+
+        let (txaudio, rxaudio) = crossbeam::channel::unbounded::<f32>();
+
+        let stream = setup_audio_play(rxaudio)?;
+
+        // Start the stream
+        stream.play()?;
 
         info!("No duration found, assuming stream is infinite and will restart on stream stop");
         loop {
