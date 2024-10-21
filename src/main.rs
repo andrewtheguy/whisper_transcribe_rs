@@ -1,5 +1,6 @@
 use std::fs;
 use std::process;
+use log::debug;
 use log::error;
 use whisper_transcribe_rs::key_ring_utils;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
@@ -81,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         
             let config_folder = get_config_dir()?;
-            eprintln!("config_folder: {}", config_folder.to_str().unwrap());
+            debug!("config_folder: {}", config_folder.to_str().unwrap());
 
             let log_dir = config_folder.join("logs");
             fs::create_dir_all(&log_dir)?;

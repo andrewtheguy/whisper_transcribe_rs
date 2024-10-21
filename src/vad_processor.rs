@@ -8,11 +8,10 @@ use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::download_utils::{get_whisper_model, get_silero_model};
 use crate::key_ring_utils::get_password;
-use crate::sample;
+use crate::runtime_utils::{get_runtime};
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use core::panic;
 use std::thread;
 use serde_json::json;
 
@@ -22,11 +21,9 @@ use std::thread::available_parallelism;
 
 use chrono::Utc;
 
-use crate::utils::build_current_thread_runtime;
-
 use std::sync::LazyLock;
 
-use crate::record_audio::{record_from_mic};
+use crate::record_audio::record_from_mic;
 
 struct ChannelPair {
     tx: crossbeam::channel::Sender<Option<Vec<i16>>>,
@@ -214,9 +211,11 @@ fn save_buf_to_file(buf: &Vec<i16>, file_name: &str) {
 }
 
 
-fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
+fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>, config: &Config, pool: &Option<Pool<sqlx::Postgres>>) {
 
-    // Create a state
+    let language = config.language.clone();
+
+    // Create an audio buffer to hold the audio samples.
     let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
 
     whisper_rs::convert_integer_to_float_audio(&samples, &mut audio).expect("Conversion error");
@@ -224,8 +223,57 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
     // Run the model.
     state.full(params.clone(), &audio[..]).expect("failed to run model");
 
-    //debug!("{}",state.full_n_segments().expect("failed to get number of segments"));
-    //samples.clear();
+    let rt = get_runtime();
+
+	// fetch the results
+	let num_segments = state
+		.full_n_segments()
+		.expect("failed to get number of segments");
+	for i in 0..num_segments {
+		let text = state
+			.full_get_segment_text(i)
+			.expect("failed to get segment");
+		let start_timestamp = state
+			.full_get_segment_t0(i)
+			.expect("failed to get segment start timestamp");
+		let end_timestamp = state
+			.full_get_segment_t1(i)
+			.expect("failed to get segment end timestamp");
+
+
+        // Get the current timestamp using chrono
+        let current_timestamp = Utc::now();
+
+        let line = json!({"start_timestamp":start_timestamp,
+            "end_timestamp":end_timestamp, "cur_ts": format!("{}",current_timestamp.to_rfc3339()), "text":text});
+        println!("{}", line);
+
+        // only convert to traditional chinese when saving to db
+        // output original in jsonl
+        let db_save_text = match language.as_str() {
+            "zh" | "yue" => {
+                zhconv(&text, Variant::ZhHant)
+            },
+            _ => {
+                text
+            }
+        };
+        if let Some(pool) = &pool {
+            rt.block_on(async {
+                let sql = r#"INSERT INTO transcripts (show_name,"timestamp", content) VALUES ($1, $2, $3)"#;
+                //eprint!("{}", sql);
+                sqlx::query(
+                    sql,
+                )
+                .bind(config.show_name.as_str())
+                .bind(current_timestamp)
+                .bind(db_save_text)
+                .execute(pool).await?;
+                Ok::<(), Box<dyn std::error::Error>>(())    
+            }).unwrap();
+        }
+
+	}
 }
 
 fn get_vad() -> Result<VoiceActivityDetector, Box<dyn std::error::Error>> {
@@ -265,7 +313,8 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
 // also saves to db if database_name is provided in config
 pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model_download_url: &str) -> Result<(), Box<dyn std::error::Error>> {
 
-    let rt = build_current_thread_runtime()?;
+    let rt = get_runtime();
+    //eprintln!("transcribe_url");
 
     let url: &str = config.url.as_str();
     let mut pool: Option<Pool<_>> = None;
@@ -361,8 +410,10 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     params.set_n_max_text_ctx(64);
 
     //let mut file = File::create("transcript.jsonl").expect("failed to create file");
-
+    
+    /*
     let language = config.language.clone();
+
     params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
 
         // Get the current timestamp using chrono
@@ -398,7 +449,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         }
 
     });
-
+    */
 
     let mut state = ctx.create_state().expect("failed to create key");
 
@@ -407,7 +458,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     //let whisper_wrapper_ref2 = &whisper_wrapper;
     let closure_annotated = |buf: &Vec<i16>| {
 
-        transcribe(&mut state, &params, &buf);
+        transcribe(&mut state, &params, &buf, &config, &pool);
 
     };
 
