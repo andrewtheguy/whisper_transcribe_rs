@@ -9,6 +9,7 @@ use ringbuffer::{AllocRingBuffer, RingBuffer};
 use crate::download_utils::{get_whisper_model, get_silero_model};
 use crate::key_ring_utils::get_password;
 use crate::runtime_utils::{get_runtime};
+use crate::streaming::Segment;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
@@ -19,22 +20,22 @@ use zhconv::{zhconv, Variant};
 
 use std::thread::available_parallelism;
 
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
 
 use std::sync::LazyLock;
 
 use crate::record_audio::record_from_mic;
 
 struct ChannelPair {
-    tx: crossbeam::channel::Sender<Option<Vec<i16>>>,
-    rx: crossbeam::channel::Receiver<Option<Vec<i16>>>,
+    tx: crossbeam::channel::Sender<Option<Segment>>,
+    rx: crossbeam::channel::Receiver<Option<Segment>>,
 }
 
 // n.b. static items do not call [`Drop`] on program termination, so this won't be deallocated.
 // this is fine, as the OS can deallocate the terminated program faster than we can free memory
 // but tools like valgrind might report "memory leaks" as it isn't obvious this is intentional.
 static MIC_CHANNEL_PAIR: LazyLock<ChannelPair> = LazyLock::new(|| {
-    let (tx, rx) = unbounded::<Option<Vec<i16>>>().try_into().unwrap();
+    let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
     ChannelPair{tx,rx}
 });
 
@@ -63,10 +64,10 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
 
-fn process_buffer_with_vad<E,F>(rx: &Receiver<Option<Vec<i16>>>, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
+fn process_buffer_with_vad<E,F>(rx: &Receiver<Option<Segment>>, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
 where
     E: FnOnce() + std::marker::Send,
-    F: FnMut(&Vec<i16>) + std::marker::Send,
+    F: FnMut(Option<i64>,&Vec<i16>) + std::marker::Send,
 {
     //let target_sample_rate: i32 = 16000;
 
@@ -99,9 +100,12 @@ where
 
             let mut has_speech;
 
+            let mut has_speech_begin_timestamp: Option<i64> = None;
+
             let mut model = get_vad().unwrap();
-            for samples in rx {
-                if let Some(samples)=samples {
+            for segment in rx {
+                if let Some(segment)=segment {
+                    let samples = segment.samples;
                     trace!("Received sample size: {}", samples.len());
                     //assert!(samples.len() as i32 == target_sample_rate); //make sure it is one second
                     //let sample2 = samples.clone();
@@ -126,6 +130,8 @@ where
                     SpeechTag::NoSpeech => {
                         if has_speech {
                             trace!("Transitioning from no speech to speech");
+                            // save the timestamp
+                            has_speech_begin_timestamp = Some(segment.timestamp_millis);
                             // add previous sample if it exists
                             //if let Some(prev_sample2) = &prev_sample {
                             if prev_samples.len() > 0 {
@@ -160,7 +166,8 @@ where
                             trace!("Transitioning from speech to no speech");
                             buf.extend(&samples);
                             //save the buffer if not empty
-                            output_callback(&buf);
+                            output_callback(has_speech_begin_timestamp,&buf);
+                            has_speech_begin_timestamp = None;
                             buf.clear();
                             prev_samples.clear();
                         }
@@ -178,7 +185,8 @@ where
             debug!("End of stream");
 
             if buf.len() > 0 {
-                output_callback(&buf);
+                output_callback(has_speech_begin_timestamp,&buf);
+                has_speech_begin_timestamp = None;
                 buf.clear();
                 //num += 1;
             }
@@ -211,9 +219,8 @@ fn save_buf_to_file(buf: &Vec<i16>, file_name: &str) {
 }
 
 
-fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>, config: &Config, pool: &Option<Pool<sqlx::Postgres>>) {
+fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples: &Vec<i16>) {
 
-    let language = config.language.clone();
 
     // Create an audio buffer to hold the audio samples.
     let mut audio = vec![0.0f32; samples.len().try_into().unwrap()];
@@ -223,6 +230,11 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
     // Run the model.
     state.full(params.clone(), &audio[..]).expect("failed to run model");
 
+    /*
+
+    let language = config.language.clone();
+
+    use this if wait until it finishes
     let rt = get_runtime();
 
 	// fetch the results
@@ -274,6 +286,7 @@ fn transcribe(state: &mut WhisperState, params: &whisper_rs::FullParams, samples
         }
 
 	}
+     */
 }
 
 fn get_vad() -> Result<VoiceActivityDetector, Box<dyn std::error::Error>> {
@@ -291,13 +304,13 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     let url = config.url.as_str();
 
     let mut num = 1;
-    let closure_annotated = |buf: &Vec<i16>| {
+    let closure_annotated = |_has_speech_begin_timestamp,buf: &Vec<i16>| {
         let file_name = format!("tmp/predict.stream.speech.{}.wav", format!("{:0>3}",num));
         save_buf_to_file(&buf, &file_name);
         num += 1;
     };
 
-    let (tx, rx) = bounded::<Option<Vec<i16>>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    let (tx, rx) = bounded::<Option<Segment>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
 
     process_buffer_with_vad(&rx,
@@ -411,54 +424,77 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     //let mut file = File::create("transcript.jsonl").expect("failed to create file");
     
-    /*
+    
     let language = config.language.clone();
 
-    params.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
-
-        // Get the current timestamp using chrono
-        let current_timestamp = Utc::now();
-
-        let line = json!({"start_timestamp":data.start_timestamp,
-            "end_timestamp":data.end_timestamp, "cur_ts": format!("{}",current_timestamp.to_rfc3339()), "text":data.text});
-        println!("{}", line);
-
-        // only convert to traditional chinese when saving to db
-        // output original in jsonl
-        let db_save_text = match language.as_str() {
-            "zh" | "yue" => {
-                zhconv(&data.text, Variant::ZhHant)
-            },
-            _ => {
-                data.text
-            }
-        };
-        if let Some(pool) = &pool {
-            rt.block_on(async {
-                let sql = r#"INSERT INTO transcripts (show_name,"timestamp", content) VALUES ($1, $2, $3)"#;
-                //eprint!("{}", sql);
-                sqlx::query(
-                    sql,
-                )
-                .bind(config.show_name.as_str())
-                .bind(current_timestamp)
-                .bind(db_save_text)
-                .execute(pool).await?;
-                Ok::<(), Box<dyn std::error::Error>>(())    
-            }).unwrap();
-        }
-
-    });
-    */
 
     let mut state = ctx.create_state().expect("failed to create key");
 
 
     //let whisper_wrapper_ref = RefCell::new(whisper_wrapper);
     //let whisper_wrapper_ref2 = &whisper_wrapper;
-    let closure_annotated = |buf: &Vec<i16>| {
+    let closure_annotated = |timestamp_millis,buf: &Vec<i16>| {
 
-        transcribe(&mut state, &params, &buf, &config, &pool);
+        let mut params2 = params.clone();
+        let language2 = language.clone();
+        let show_name2 = config.show_name.clone();
+        // safe to clone https://github.com/launchbadge/sqlx/discussions/917
+        let pool2 = pool.clone();
+        //let buf2 = buf.clone();
+        params2.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
+            //let buf3 = buf2.clone();
+
+
+            let calculated_start_timestamp_obj = if let Some(timestamp_millis) = timestamp_millis{
+              Some(Utc.timestamp_millis_opt(timestamp_millis+data.start_timestamp).unwrap())
+            }else{
+                None
+            };
+
+            let calculated_start_timestamp = match calculated_start_timestamp_obj {
+                Some(ts) => Some(ts.to_rfc3339()),
+                None => None
+            };
+
+            //let calculated_end_timestamp = Utc.timestamp_millis_opt(timestamp_millis+data.end_timestamp);
+
+            let line = json!({"start_timestamp":data.start_timestamp,
+                "end_timestamp":data.end_timestamp, "cur_ts": calculated_start_timestamp, "text":data.text});
+            println!("{}", line);
+
+            // only convert to traditional chinese when saving to db
+            // output original in jsonl
+            let db_save_text = match language2.as_str() {
+                "zh" | "yue" => {
+                    zhconv(&data.text, Variant::ZhHant)
+                },
+                _ => {
+                    data.text
+                }
+            };
+            if let Some(pool) = &pool2 {
+                // need to fallback to current timestamp if calculated_start_timestamp is None
+                let current_timestamp_db_save = match calculated_start_timestamp_obj {
+                    Some(ts) => ts,
+                    None => Utc::now()
+                };
+                rt.block_on(async {
+                    let sql = r#"INSERT INTO transcripts (show_name,"timestamp", content) VALUES ($1, $2, $3)"#;
+                    //eprint!("{}", sql);
+                    sqlx::query(
+                        sql,
+                    )
+                    .bind(show_name2.as_str())
+                    .bind(current_timestamp_db_save)
+                    .bind(db_save_text)
+                    .execute(pool).await?;
+                    Ok::<(), Box<dyn std::error::Error>>(())    
+                }).unwrap();
+            }
+
+        });
+
+        transcribe(&mut state, &params2, &buf);
 
     };
 
@@ -485,7 +521,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         //     closure_annotated)?;
     } else {
 
-        let (tx, rx) = bounded::<Option<Vec<i16>>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+        let (tx, rx) = bounded::<Option<Segment>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
         process_buffer_with_vad(&rx,
             || {

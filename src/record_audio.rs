@@ -2,6 +2,7 @@
 //!
 //! The input data is recorded to "$CARGO_MANIFEST_DIR/recorded.wav".
 
+use chrono::{TimeZone, Utc};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, SampleRate, StreamConfig};
 use crossbeam::channel::Sender;
@@ -11,7 +12,9 @@ use samplerate::{convert, ConverterType};
 use std::io::{self, Read};
 use console::Term;
 
-pub fn record_from_mic(tx: &'static Sender<Option<Vec<i16>>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
+use crate::streaming::Segment;
+
+pub fn record_from_mic(tx: &'static Sender<Option<Segment>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
     // Conditionally compile with jack if the feature is specified.
     #[cfg(all(
         any(
@@ -112,7 +115,7 @@ pub fn record_from_mic(tx: &'static Sender<Option<Vec<i16>>>,sample_size: usize)
 }
 
 
-fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Option<Vec<i16>>>)
+fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Option<Segment>>)
 {
     let resampled: Vec<f32>= if sample_rate.0 > 16000 {
     // Resample the input to 16000hz.
@@ -123,6 +126,7 @@ fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Option<Ve
     
     let output: Vec<i16> = resampled.iter().map(|&x| x.to_sample::<i16>()).collect::<Vec<i16>>();
     trace!("output len: {}", output.len());
-    tx.send(Some(output)).unwrap();
+    let timestamp_millis = Utc::now().timestamp_millis();
+    tx.send(Some(Segment{timestamp_millis, samples: output})).unwrap();
     
 }
