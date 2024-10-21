@@ -440,6 +440,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
         let show_name2 = config.show_name.clone();
         // safe to clone https://github.com/launchbadge/sqlx/discussions/917
         let pool2 = pool.clone();
+        let rt2= rt.clone();
         //let buf2 = buf.clone();
         params2.set_segment_callback_safe( move |data: whisper_rs::SegmentCallbackData| {
             //let buf3 = buf2.clone();
@@ -478,7 +479,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                     Some(ts) => ts,
                     None => Utc::now()
                 };
-                rt.block_on(async {
+                rt2.block_on(async {
                     let sql = r#"INSERT INTO transcripts (show_name,"timestamp", content) VALUES ($1, $2, $3)"#;
                     //eprint!("{}", sql);
                     sqlx::query(
