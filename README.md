@@ -5,7 +5,7 @@ need to install ffmpeg separately
 - create a config toml file
 - then run
 ```
-cargo run -- --config-file config.toml process-url 2> >(rotatelogs -n 5 ./tmp/output.log 1M >&2)
+cargo run -- --config-file config.toml process-url
 ```
 
 set postgres password:
@@ -18,6 +18,11 @@ windows:
 cargo run -- config.toml 2> NUL
 ```
 - see config*.toml for config examples
+
+view logs
+```
+tail -F 'config dir/logs/rthk2_streaming.log'
+```
 
 TODO:
 
