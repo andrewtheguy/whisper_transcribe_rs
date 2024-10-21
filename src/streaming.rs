@@ -3,7 +3,7 @@ use chrono::Utc;
 use crossbeam::channel::Sender;
 use log::{debug, error, info, trace, warn};
 use serde_json::json;
-use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
+use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep, time};
 use serde::{Deserialize, Serialize};
 use std::str;
 use read_chunks::ReadExt;
@@ -26,9 +26,13 @@ struct FFProbeOutput {
     format: FFProbeFormat,
 }
 
+pub struct Segment {
+    pub timestamp_millis: i64,
+    pub samples: Vec<i16>,
+}
 
 
-fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Option<Vec<i16>>>,is_live_stream: bool) -> Result<(), Box<dyn std::error::Error>>
+fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: usize, tx: &Sender<Option<Segment>>,is_live_stream: bool) -> Result<(), Box<dyn std::error::Error>>
 {
     // Path to the input file
     //let input_file = "input.mp3"; // Replace with your file path
@@ -77,7 +81,9 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
         }
 
         trace!("{}",json!({"channel_size": tx.len()}).to_string());
-        tx.send(Some(convert_to_i16_vec(&chunk?)))?;
+        let samples = convert_to_i16_vec(&chunk?);
+        let timestamp_millis = Utc::now().timestamp_millis();
+        tx.send(Some(Segment{ timestamp_millis, samples }))?;
 
     }
 
@@ -92,7 +98,7 @@ fn streaming_inner_loop(input_url: &str, target_sample_rate: i64, sample_size: u
 }
 
 
-pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Option<Vec<i16>>>) -> Result<(), Box<dyn std::error::Error>>
+pub fn streaming_url(input_url: &str, target_sample_rate: i64, sample_size: usize,tx: &Sender<Option<Segment>>) -> Result<(), Box<dyn std::error::Error>>
 {
 
     // Run ffmpeg to get raw PCM (s16le) data at 16kHz
