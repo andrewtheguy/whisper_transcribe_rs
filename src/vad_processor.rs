@@ -64,7 +64,7 @@ The VAD predicts speech in a chunk of Linear Pulse Code Modulation (LPCM) encode
 The model is trained using chunk sizes of 256, 512, and 768 samples for an 8000 hz sample rate. It is trained using chunk sizes of 512, 768, 1024 samples for a 16,000 hz sample rate.
 */
 
-fn process_buffer_with_vad<E,F>(rx: &Receiver<Option<Segment>>, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
+fn process_with_vad<E,F>(rx: &Receiver<Option<Segment>>, input_callback: E, mut output_callback: F) -> Result<(), Box<dyn std::error::Error>>
 where
     E: FnOnce() + std::marker::Send,
     F: FnMut(Option<i64>,&Vec<i16>) + std::marker::Send,
@@ -313,7 +313,7 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     let (tx, rx) = bounded::<Option<Segment>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
 
-    process_buffer_with_vad(&rx,
+    process_with_vad(&rx,
          || {
             streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
         },
@@ -503,7 +503,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     if url == "microphone://default" {
         let mic_channel_pair = &*MIC_CHANNEL_PAIR;
-        process_buffer_with_vad(&mic_channel_pair.rx,
+        process_with_vad(&mic_channel_pair.rx,
             || {
                 //loop {
                 record_from_mic(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
@@ -513,7 +513,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     }else if url == "audio_output://default" {
         return Err("audio_output://default not supported".into());
         // let mic_channel_pair = &*MIC_CHANNEL_PAIR;
-        // process_buffer_with_vad(&mic_channel_pair.rx,
+        // process_with_vad(&mic_channel_pair.rx,
         //     || {
         //         //loop {
         //         record_computer_output(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
@@ -524,7 +524,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
         let (tx, rx) = bounded::<Option<Segment>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
-        process_buffer_with_vad(&rx,
+        process_with_vad(&rx,
             || {
                 streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
             },closure_annotated)?;
