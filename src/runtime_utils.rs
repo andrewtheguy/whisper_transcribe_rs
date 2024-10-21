@@ -15,7 +15,7 @@ fn build_current_thread_runtime() -> Result<tokio::runtime::Runtime, Box<dyn std
     Ok(rt)
 }
 
-pub fn get_runtime() -> Arc<tokio::runtime::Runtime> {
+pub fn get_runtime() -> &'static Arc<tokio::runtime::Runtime> {
     let rt: &Arc<tokio::runtime::Runtime> = &*CURRENT_THREAD_RUNTIME;
-    Arc::clone(rt)
+    rt
 }
