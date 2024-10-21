@@ -14,9 +14,9 @@ appenders:
         count: 5
         pattern: "{{log_path}}.{}"
 
-  file_rs:
+  file_streaming:
     kind: rolling_file
-    path: "logs/rs.log"
+    path: "{{log_path_my_app}}"
     policy:
       trigger:
         kind: size
@@ -25,7 +25,7 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "logs/rs.log.{}"
+        pattern: "{{log_path_my_app}}.{}"
 
 root:
   level: info
@@ -35,5 +35,12 @@ root:
 loggers:
   whisper_transcribe_rs:
     level: trace
+    additive: false
     appenders:
-      - file_rs
+      - file
+      
+  whisper_transcribe_rs::streaming:
+    level: trace
+    additive: false
+    appenders:
+      - file_streaming

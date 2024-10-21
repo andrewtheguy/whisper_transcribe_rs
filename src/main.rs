@@ -89,12 +89,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let log_dir = config_folder.join("logs");
             fs::create_dir_all(&log_dir)?;
+
             let log_path = log_dir.join(format!("{}.log",config.show_name));
+            let log_path_my_app = log_dir.join(format!("{}_streaming.log",config.show_name));
 
             let template = include_str!("log4rs.yaml");
 
             // Replace the placeholder with the actual log path
-            let config_str = template.replace("{{log_path}}", &log_path.to_slash().unwrap());
+            let config_str = template.replace("{{log_path}}", &log_path.to_slash().unwrap())
+                                             .replace("{{log_path_my_app}}", &log_path_my_app.to_slash().unwrap());
+
+
             let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
             log4rs::init_raw_config(config_log).unwrap();
         
