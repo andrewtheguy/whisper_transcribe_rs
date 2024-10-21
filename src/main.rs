@@ -1,7 +1,10 @@
 use std::fs;
 use std::process;
 use log::debug;
-use log::error;
+
+// Trait for extending std::path::Path
+use path_slash::PathExt as _;
+
 use whisper_transcribe_rs::key_ring_utils;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
@@ -89,8 +92,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let log_path = log_dir.join(format!("{}.log",config.show_name));
 
             let template = include_str!("log4rs.yaml");
+
             // Replace the placeholder with the actual log path
-            let config_str = template.replace("{{log_path}}", log_path.to_str().unwrap());
+            let config_str = template.replace("{{log_path}}", &log_path.to_slash().unwrap());
             let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
             log4rs::init_raw_config(config_log).unwrap();
         

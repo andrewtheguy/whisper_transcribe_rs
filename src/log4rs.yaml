@@ -1,7 +1,7 @@
 appenders:
   file:
     kind: rolling_file
-    path: '{{log_path}}'
+    path: "{{log_path}}"
     #encoder:
     #  pattern: "{d} - {l} - {m}{n}"
     policy:
