@@ -22,22 +22,8 @@ use std::thread::available_parallelism;
 
 use chrono::{TimeZone, Utc};
 
-use std::sync::LazyLock;
 
 use crate::record_audio::record_from_mic;
-
-struct ChannelPair {
-    tx: crossbeam::channel::Sender<Option<Segment>>,
-    rx: crossbeam::channel::Receiver<Option<Segment>>,
-}
-
-// n.b. static items do not call [`Drop`] on program termination, so this won't be deallocated.
-// this is fine, as the OS can deallocate the terminated program faster than we can free memory
-// but tools like valgrind might report "memory leaks" as it isn't obvious this is intentional.
-static MIC_CHANNEL_PAIR: LazyLock<ChannelPair> = LazyLock::new(|| {
-    let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
-    ChannelPair{tx,rx}
-});
 
 
 enum SpeechTag {
@@ -502,11 +488,11 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     //let mut model = get_vad();
 
     if url == "microphone://default" {
-        let mic_channel_pair = &*MIC_CHANNEL_PAIR;
-        process_with_vad(&mic_channel_pair.rx,
+        let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
+        process_with_vad(&rx,
             || {
                 //loop {
-                record_from_mic(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
+                record_from_mic(&tx,SAMPLE_SIZE).unwrap();
                 //}
             },
             closure_annotated)?;

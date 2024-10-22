@@ -14,7 +14,7 @@ use console::Term;
 
 use crate::streaming::Segment;
 
-pub fn record_from_mic(tx: &'static Sender<Option<Segment>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
+pub fn record_from_mic(tx: &Sender<Option<Segment>>,sample_size: usize) -> Result<(), Box<dyn std::error::Error>> {
     // Conditionally compile with jack if the feature is specified.
     #[cfg(all(
         any(
@@ -86,9 +86,14 @@ pub fn record_from_mic(tx: &'static Sender<Option<Segment>>,sample_size: usize) 
         error!("an error occurred on stream: {}", err);
     };
 
+    let tx2 = tx.clone();
+
     let stream = device.build_input_stream(
             &config.into(),
-            move |data: &[f32], _: &_| write_input_data(data,sample_rate,&tx),
+            move |data: &[f32], _: &_| {
+                let tx2 = tx2.clone();
+                write_input_data(data,sample_rate,tx2);
+            },
             err_fn,
             None,
         )?;
@@ -115,7 +120,7 @@ pub fn record_from_mic(tx: &'static Sender<Option<Segment>>,sample_size: usize) 
 }
 
 
-fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: &Sender<Option<Segment>>)
+fn write_input_data(input: &[f32],sample_rate: SampleRate, tx: Sender<Option<Segment>>)
 {
     let resampled: Vec<f32>= if sample_rate.0 > 16000 {
     // Resample the input to 16000hz.
