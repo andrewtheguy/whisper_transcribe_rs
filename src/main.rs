@@ -1,10 +1,10 @@
 use std::fs;
 use std::process;
-use log::debug;
 
 // Trait for extending std::path::Path
 use path_slash::PathExt as _;
 
+use whisper_transcribe_rs::config::Operation;
 use whisper_transcribe_rs::key_ring_utils;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
@@ -105,19 +105,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         
             //error!("test error");
 
-            let operation = config.operation.as_str();
+            //let operation = config.operation;
         
-            match operation {
-                "save_to_file"=>{
+            match config.operation {
+                Operation::SaveToFile=>{
                     //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
                     stream_to_file(config)?;
                 },
-                "transcribe"=>{
+                Operation::Transcribe=>{
                     whisper_rs::install_whisper_log_trampoline();
                     transcribe_url(config,num_transcribe_threads,model_download_url)?;
                 },
                 _=>{
-                    eprintln!("unknown operation: {}", operation);
+                    eprintln!("unknown operation: {:?}", config.operation);
                     process::exit(1);
                 }
             }

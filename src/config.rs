@@ -10,12 +10,20 @@ pub struct DatabaseConfig {
     pub require_ssl: bool,
 }
 
+#[derive(Deserialize, Debug)]
+pub enum Operation {
+    #[serde(rename = "transcribe")]
+    Transcribe,
+    #[serde(rename = "save_to_file")]
+    SaveToFile,
+}
+
 #[derive(Deserialize)]
 pub struct Config {
     pub url: String,
     pub database_config: Option<DatabaseConfig>,
     pub language: String,
-    pub operation: String, //should be enum
+    pub operation: Operation, //should be enum
     pub show_name: String,
    //port: Option<u16>,
    //keys: Keys,
