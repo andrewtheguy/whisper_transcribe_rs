@@ -5,40 +5,52 @@
 //! ```
 
 use axum::{
-    extract::Request, handler::HandlerWithoutStateExt, http::StatusCode, routing::get, Router,
+    routing::get, Json, Router
 };
+use log::info;
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use tower::ServiceExt;
+
 use tower_http::{
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub async fn start_webserver(port: u16) {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                format!("{}=debug,tower_http=debug", env!("CARGO_CRATE_NAME")).into()
-            }),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
 
-    tokio::join!(
-        serve(using_serve_dir(), port),
-        // serve(using_serve_dir_with_assets_fallback(), 3002),
-        // serve(using_serve_dir_only_from_root_via_fallback(), 3003),
-        // serve(using_serve_dir_with_handler_as_service(), 3004),
-        // serve(two_serve_dirs(), 3005),
-        // serve(calling_serve_dir_from_a_handler(), 3006),
-        // serve(using_serve_file_from_a_route(), 3307),
-    );
+        serve(using_serve_dir(), port).await;
+
+    // tokio::join!(
+    //     serve(using_serve_dir(), port),
+    //     // serve(using_serve_dir_with_assets_fallback(), 3002),
+    //     // serve(using_serve_dir_only_from_root_via_fallback(), 3003),
+    //     // serve(using_serve_dir_with_handler_as_service(), 3004),
+    //     // serve(two_serve_dirs(), 3005),
+    //     // serve(calling_serve_dir_from_a_handler(), 3006),
+    //     // serve(using_serve_file_from_a_route(), 3307),
+    // );
 }
 
 fn using_serve_dir() -> Router {
+
     // serve the file in the "dist" directory under `/`
-    Router::new().nest_service("/", ServeDir::new("frontend/dist"))
+    Router::new()
+    .route("/api/test", get(test_api))
+    .nest_service("/", ServeDir::new("frontend/dist"))
+}
+
+#[derive(Serialize, Deserialize)]
+struct TestResponse {
+    message: String,
+}
+
+
+//#[axum::debug_handler]
+async fn test_api() -> Json<TestResponse> {
+
+    Json(TestResponse {
+        message: "hello test".to_string(),
+    })
 }
 
 // fn using_serve_dir_with_assets_fallback() -> Router {
@@ -109,7 +121,7 @@ fn using_serve_dir() -> Router {
 async fn serve(app: Router, port: u16) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    tracing::debug!("listening on {}", listener.local_addr().unwrap());
+    info!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app.layer(TraceLayer::new_for_http()))
         .await
         .unwrap();

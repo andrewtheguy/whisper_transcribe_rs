@@ -103,6 +103,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
             log4rs::init_raw_config(config_log).unwrap();
         
+            // Initialize tracing with a subscriber that respects the log level and formats.
+    // tracing_subscriber::fmt()
+    // .with_env_filter(EnvFilter::new("debug")) // Set default log level to debug
+    // .init();
+
+
             //error!("test error");
 
             //let operation = config.operation;

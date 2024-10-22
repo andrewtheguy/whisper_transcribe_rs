@@ -10,6 +10,7 @@ use crate::download_utils::{get_whisper_model, get_silero_model};
 use crate::key_ring_utils::get_password;
 use crate::runtime_utils::{get_runtime};
 use crate::streaming::Segment;
+use crate::web::start_webserver;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
@@ -496,6 +497,11 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                 //}
             },
             closure_annotated)?;
+    }else if url == "webserver://default" {
+        let rt = get_runtime();
+        rt.block_on(async {
+            start_webserver(5002).await
+        });
     }else if url == "audio_output://default" {
         return Err("audio_output://default not supported".into());
         // let mic_channel_pair = &*MIC_CHANNEL_PAIR;
