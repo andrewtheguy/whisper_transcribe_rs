@@ -1,0 +1,12 @@
+url = "webserver://default"
+language="yue" #cantonese
+operation = "transcribe" # or save_to_file
+show_name = "web_server"
+
+[database_config]
+database_host = "10.22.33.120"
+database_user = "postgres"
+database_port = 5432
+database_password_key = "postgres_portainer"
+database_name = "whisper_transcribe_rs_v1"
+require_ssl=false
