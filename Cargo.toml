@@ -48,13 +48,12 @@ read_chunks = "0.2.0"
 log = "0.4.22"
 path-slash = "0.2.1"
 
-axum = "0.7.5"
-axum-extra = "0.9.3"
+axum = {version="0.7.7", features = ["macros","json"]}
+#axum-extra = "0.9.3"
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5.0", features = ["fs", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
 
 [dependencies.whisper-rs]
 git = "https://github.com/tazz4843/whisper-rs"
