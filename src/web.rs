@@ -5,9 +5,12 @@
 //! ```
 
 use axum::{
-    routing::get, Json, Router
-};
+    http::{header, StatusCode, Uri},
+    response::{Html, IntoResponse, Response}, Json,
+    routing::{get, Router},
+  };
 use log::info;
+use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
@@ -16,9 +19,67 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+
+
+// We use static route matchers ("/" and "/index.html") to serve our home
+// page.
+async fn index_handler() -> impl IntoResponse {
+    static_handler("/index.html".parse::<Uri>().unwrap()).await
+}
+
+// We use a wildcard matcher ("/dist/*file") to match against everything
+// within our defined assets directory. This is the directory on our Asset
+// struct below, where folder = "examples/public/".
+async fn static_handler(uri: Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/').to_string();
+
+    // if path.starts_with("dist/") {
+    //   path = path.replace("dist/", "");
+    // }
+
+    StaticFile(path)
+}
+
+// Finally, we use a fallback route for anything that didn't match.
+async fn not_found() -> Html<&'static str> {
+    Html("<h1>404</h1><p>Not Found</p>")
+}
+
+#[derive(Embed)]
+#[folder = "./frontend/dist/"]
+struct Asset;
+
+pub struct StaticFile<T>(pub T);
+
+impl<T> IntoResponse for StaticFile<T>
+where
+  T: Into<String>,
+{
+  fn into_response(self) -> Response {
+    let path = self.0.into();
+
+    match Asset::get(path.as_str()) {
+      Some(content) => {
+        let mime = mime_guess::from_path(path).first_or_octet_stream();
+        ([(header::CONTENT_TYPE, mime.as_ref())], content.data).into_response()
+      }
+      None => (StatusCode::NOT_FOUND, "404 Not Found").into_response(),
+    }
+  }
+}
+
 pub async fn start_webserver(port: u16) {
 
-        serve(using_serve_dir(), port).await;
+    // Define our app routes, including a fallback option for anything not matched.
+    let app = Router::new()
+      .route("/", get(index_handler))
+      .route("/index.html", get(index_handler))
+      .route("/vite.svg", get(static_handler))
+      .route("/assets/*file", get(static_handler))
+      .route("/api/test", get(test_api))
+      .fallback_service(get(not_found));
+
+        serve(app, port).await;
 
     // tokio::join!(
     //     serve(using_serve_dir(), port),
@@ -31,13 +92,13 @@ pub async fn start_webserver(port: u16) {
     // );
 }
 
-fn using_serve_dir() -> Router {
+// fn using_serve_dir() -> Router {
 
-    // serve the file in the "dist" directory under `/`
-    Router::new()
-    .route("/api/test", get(test_api))
-    .nest_service("/", ServeDir::new("frontend/dist"))
-}
+//     // serve the file in the "dist" directory under `/`
+//     Router::new()
+//     .route("/api/test", get(test_api))
+//     .nest_service("/", ServeDir::new("frontend/dist"))
+// }
 
 #[derive(Serialize, Deserialize)]
 struct TestResponse {
@@ -121,7 +182,7 @@ async fn test_api() -> Json<TestResponse> {
 async fn serve(app: Router, port: u16) {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    info!("listening on {}", listener.local_addr().unwrap());
+    eprintln!("listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app.layer(TraceLayer::new_for_http()))
         .await
         .unwrap();
