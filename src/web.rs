@@ -5,13 +5,13 @@
 //! ```
 
 use axum::{
-    http::{header, StatusCode, Uri},
-    response::{Html, IntoResponse, Response}, Json,
-    routing::{get, Router},
+    http::{header, request, StatusCode, Uri}, response::{Html, IntoResponse, Response}, routing::{get, Router}, Json
   };
+use crossbeam::channel::Sender;
 use log::info;
 use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncBufRead;
 use std::net::SocketAddr;
 
 use tower_http::{
@@ -19,7 +19,11 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+use crate::{streaming::Segment, vad_processor::save_buf_to_file};
 
+use tokio::io::{self, AsyncReadExt};
+
+use futures::StreamExt;
 
 // We use static route matchers ("/" and "/index.html") to serve our home
 // page.
@@ -49,7 +53,7 @@ async fn not_found() -> Html<&'static str> {
 #[folder = "./frontend/dist/"]
 struct Asset;
 
-pub struct StaticFile<T>(pub T);
+struct StaticFile<T>(pub T);
 
 impl<T> IntoResponse for StaticFile<T>
 where
@@ -68,29 +72,132 @@ where
   }
 }
 
-pub async fn start_webserver(port: u16) {
+#[axum::debug_handler]
+async fn test_api(axum::extract::State(state): axum::extract::State<AppState>) -> Json<TestResponse> {
 
-    // Define our app routes, including a fallback option for anything not matched.
-    let app = Router::new()
-      .route("/", get(index_handler))
-      .route("/index.html", get(index_handler))
-      .route("/vite.svg", get(static_handler))
-      .route("/assets/*file", get(static_handler))
-      .route("/api/test", get(test_api))
-      .fallback_service(get(not_found));
-
-        serve(app, port).await;
-
-    // tokio::join!(
-    //     serve(using_serve_dir(), port),
-    //     // serve(using_serve_dir_with_assets_fallback(), 3002),
-    //     // serve(using_serve_dir_only_from_root_via_fallback(), 3003),
-    //     // serve(using_serve_dir_with_handler_as_service(), 3004),
-    //     // serve(two_serve_dirs(), 3005),
-    //     // serve(calling_serve_dir_from_a_handler(), 3006),
-    //     // serve(using_serve_file_from_a_route(), 3307),
-    // );
+  Json(TestResponse {
+      message: "hello test".to_string(),
+  })
 }
+
+fn process_chunk(buffer: &[u8],tx: &Sender::<Option<Segment>>) {
+
+  // Convert the raw byte buffer into Vec<i16>
+  let mut samples: Vec<i16> = Vec::with_capacity(buffer.len() / 2); // i16 is 2 bytes
+  for chunk in buffer.chunks_exact(2) {
+      let sample = i16::from_le_bytes(chunk.try_into().unwrap()); // Convert 2 bytes to i16
+      samples.push(sample);
+  }
+
+  let segment = Segment {
+    samples: samples,
+    timestamp_millis: chrono::Utc::now().timestamp_millis(),
+  };
+  eprintln!("segment len: {}", segment.samples.len());
+  tx.send(Some(segment)).unwrap();
+  //let file_name = std::path::PathBuf::from("tmp/test.wav");
+  //save_buf_to_file(&segment.samples, &file_name)
+}
+
+async fn read_stream(mut body_stream: axum::body::BodyDataStream,tx: &Sender::<Option<Segment>>) -> Result<(), Box<dyn std::error::Error>> {
+  const CHUNK_SIZE: usize = 2048;
+
+  let mut buffer = Vec::with_capacity(CHUNK_SIZE);
+
+  while let Some(chunk) = body_stream.next().await {
+      match chunk {
+          Ok(data) => {
+              buffer.extend_from_slice(&data);
+
+              // Process in CHUNK_SIZE portions if the buffer has enough data
+              while buffer.len() >= CHUNK_SIZE {
+                  let chunk_to_process = buffer.drain(..CHUNK_SIZE).collect::<Vec<u8>>();
+                  process_chunk(&chunk_to_process,&tx);
+              }
+          }
+          Err(e) => {
+              eprintln!("Error reading body chunk: {:?}", e);
+              return Err(e.into());
+          }
+      }
+  }
+
+  // Process any remaining data in the buffer
+  if !buffer.is_empty() {
+      process_chunk(&buffer,&tx);
+  }
+
+  //tx.send(None).unwrap();
+
+  Ok(())
+}
+
+#[axum::debug_handler]
+async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>,request: axum::http::Request<axum::body::Body>) -> Json<TestResponse> {
+  //let body = request.into_body();
+  let body_stream = request.into_body().into_data_stream();
+
+  read_stream(body_stream, &state.tx).await.unwrap();
+
+  Json(TestResponse {
+      message: "success".to_string(),
+  })
+}
+
+#[derive(Serialize, Deserialize)]
+struct TestResponse {
+    message: String,
+}
+
+#[derive(Clone)]
+struct AppState {
+  tx: Sender::<Option<Segment>>,
+}
+
+pub struct TranscribeWebServer {
+    port: u16,
+    state: AppState,
+}
+
+impl TranscribeWebServer {
+    pub fn new(port: u16, tx: Sender::<Option<Segment>>) -> Self {
+        Self {
+            port,
+            state: AppState {
+                tx,
+            }
+        }
+    }
+
+    pub async fn start_webserver(self) {
+
+      //let m = move || async move { self.test_api() };
+
+      // Define our app routes, including a fallback option for anything not matched.
+      let app = Router::new()
+        .route("/", get(index_handler))
+        .route("/index.html", get(index_handler))
+        .route("/vite.svg", get(static_handler))
+        .route("/assets/*file", get(static_handler))
+        .route("/api/test", axum::routing::get(test_api))
+        .route("/api/audio_input", axum::routing::post(audio_input))
+        .with_state(self.state.clone())
+        .fallback_service(get(not_found));
+  
+        self.serve(app).await;
+  
+      // tokio::join!(
+      //     serve(using_serve_dir(), port),
+      //     // serve(using_serve_dir_with_assets_fallback(), 3002),
+      //     // serve(using_serve_dir_only_from_root_via_fallback(), 3003),
+      //     // serve(using_serve_dir_with_handler_as_service(), 3004),
+      //     // serve(two_serve_dirs(), 3005),
+      //     // serve(calling_serve_dir_from_a_handler(), 3006),
+      //     // serve(using_serve_file_from_a_route(), 3307),
+      // );
+  }
+
+
 
 // fn using_serve_dir() -> Router {
 
@@ -100,19 +207,7 @@ pub async fn start_webserver(port: u16) {
 //     .nest_service("/", ServeDir::new("frontend/dist"))
 // }
 
-#[derive(Serialize, Deserialize)]
-struct TestResponse {
-    message: String,
-}
 
-
-//#[axum::debug_handler]
-async fn test_api() -> Json<TestResponse> {
-
-    Json(TestResponse {
-        message: "hello test".to_string(),
-    })
-}
 
 // fn using_serve_dir_with_assets_fallback() -> Router {
 //     // `ServeDir` allows setting a fallback if an asset is not found
@@ -179,11 +274,13 @@ async fn test_api() -> Json<TestResponse> {
 //     Router::new().route_service("/foo", ServeFile::new("assets/index.html"))
 // }
 
-async fn serve(app: Router, port: u16) {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    eprintln!("listening on {}", listener.local_addr().unwrap());
-    axum::serve(listener, app.layer(TraceLayer::new_for_http()))
-        .await
-        .unwrap();
+  async fn serve(self, app: Router) {
+      let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
+      let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+      eprintln!("listening on {}", listener.local_addr().unwrap());
+      axum::serve(listener, app.layer(TraceLayer::new_for_http()))
+          .await
+          .unwrap();
+  }
+
 }

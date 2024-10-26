@@ -11,7 +11,7 @@ use crate::download_utils::{get_whisper_model, get_silero_model};
 use crate::key_ring_utils::get_password;
 use crate::runtime_utils::{get_runtime};
 use crate::streaming::Segment;
-use crate::web::start_webserver;
+use crate::web::TranscribeWebServer;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
@@ -183,6 +183,7 @@ where
             debug!("finished processing");
         });
         
+        // needed this for the thread not to block
         input_callback();
         //streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
         
@@ -194,7 +195,7 @@ where
 
 
 
-fn save_buf_to_file(buf: &Vec<i16>, file_name: &PathBuf) {
+pub fn save_buf_to_file(buf: &Vec<i16>, file_name: &PathBuf) {
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: 16000,
@@ -329,7 +330,16 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
                 closure_annotated)?;
         },
         crate::config::Source::Web => {
-            panic!("save to file from web source not implemented yet");
+            let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
+            let rt = get_runtime();
+
+            process_with_vad(&rx,
+                || {
+                    rt.block_on(async {
+                        TranscribeWebServer::new(5002,tx.clone()).start_webserver().await
+                    });
+                },
+                closure_annotated)?;
         },
     }
 
@@ -531,10 +541,17 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                 closure_annotated)?;
         },
         crate::config::Source::Web => {
+            let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
             let rt = get_runtime();
-            rt.block_on(async {
-                start_webserver(5001).await
-            });
+
+            process_with_vad(&rx,
+                || {
+                    rt.block_on(async {
+                        TranscribeWebServer::new(5002,tx.clone()).start_webserver().await
+                    });
+                },
+                closure_annotated)?;
+
         },
     }
 
