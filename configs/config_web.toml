@@ -1,4 +1,5 @@
-url = "webserver://default"
+source = "web"
+#url = "webserver://default"
 language="yue" #cantonese
 operation = "transcribe" # or save_to_file
 show_name = "web_server"

@@ -1,3 +1,4 @@
+use axum::serve;
 use crossbeam::channel::{bounded, unbounded, Receiver};
 use hound::{self};
 use log::{debug, trace};
@@ -14,6 +15,7 @@ use crate::web::start_webserver;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
+use core::panic;
 use std::path::PathBuf;
 use std::thread;
 use serde_json::json;
@@ -325,7 +327,10 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
                     record_from_mic(&tx,SAMPLE_SIZE).unwrap();
                 },
                 closure_annotated)?;
-        }
+        },
+        crate::config::Source::Web => {
+            panic!("save to file from web source not implemented yet");
+        },
     }
 
     Ok(())
@@ -524,7 +529,13 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
                     record_from_mic(&tx,SAMPLE_SIZE).unwrap();
                 },
                 closure_annotated)?;
-        }
+        },
+        crate::config::Source::Web => {
+            let rt = get_runtime();
+            rt.block_on(async {
+                start_webserver(5001).await
+            });
+        },
     }
 
     Ok(())

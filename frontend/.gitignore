@@ -8,7 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# need to include dist for rust web ui
+# dist
 dist-ssr
 *.local
 
