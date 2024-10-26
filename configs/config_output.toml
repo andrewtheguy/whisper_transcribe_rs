@@ -1,6 +1,5 @@
 url = "audio_output://default"
 language="yue" #cantonese
-operation = "transcribe" # or save_to_file
 show_name = "audio_output"
 
 # [database_config]

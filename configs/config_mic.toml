@@ -1,6 +1,5 @@
 url = "microphone://default"
 language="yue" #cantonese
-operation = "transcribe" # or save_to_file
 show_name = "microphone"
 
 [database_config]

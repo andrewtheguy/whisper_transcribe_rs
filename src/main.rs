@@ -4,7 +4,6 @@ use std::process;
 // Trait for extending std::path::Path
 use path_slash::PathExt as _;
 
-use whisper_transcribe_rs::config::Operation;
 use whisper_transcribe_rs::key_ring_utils;
 use whisper_transcribe_rs::vad_processor::stream_to_file;
 use whisper_transcribe_rs::vad_processor::transcribe_url;
@@ -38,8 +37,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
 
-    #[command(about = "process url from config file to transcribe or save to file")]
-    ProcessUrl {
+    #[command(about = "transcribe from config file")]
+    Transcribe {
 
         #[arg(short, long)]
         model: Option<String>,
@@ -47,6 +46,8 @@ enum Commands {
         #[arg(short, long)]
         num_transcribe_threads: Option<usize>,
     },
+    #[command(about = "split audio with vad and save to file")]
+    SaveToFile,
     #[command(about = "set database password from config file")]
     SetDbPassword
 }
@@ -58,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config: Config = toml::from_str(fs::read_to_string(cli.config_file)?.as_str()).unwrap();
     let subcommand = cli.command;
     match subcommand {
-        Commands::ProcessUrl{ model, num_transcribe_threads} => {
+        Commands::Transcribe{ model, num_transcribe_threads} => {
 
             let default_download_url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/4496f29dabb6f37d8e6c45c3ec89ccbe66a832ea/ggml-large-v3-turbo.bin?download=true";
 
@@ -103,25 +104,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
             log4rs::init_raw_config(config_log).unwrap();
         
-            //error!("test error");
-
-            //let operation = config.operation;
+            whisper_rs::install_whisper_log_trampoline();
+            transcribe_url(config,num_transcribe_threads,model_download_url)?;
         
-            match config.operation {
-                Operation::SaveToFile=>{
-                    //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
-                    stream_to_file(config)?;
-                },
-                Operation::Transcribe=>{
-                    whisper_rs::install_whisper_log_trampoline();
-                    transcribe_url(config,num_transcribe_threads,model_download_url)?;
-                },
-                _=>{
-                    eprintln!("unknown operation: {:?}", config.operation);
-                    process::exit(1);
-                }
-            }
-        
+        },
+        Commands::SaveToFile => {
+            stream_to_file(config)?;
         },
         Commands::SetDbPassword => {
             let database_password_key = config.database_config.unwrap().database_password_key.clone();
