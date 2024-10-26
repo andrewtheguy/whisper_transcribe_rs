@@ -93,7 +93,7 @@ fn process_chunk(buffer: &[u8],tx: &Sender::<Option<Segment>>) {
     samples: samples,
     timestamp_millis: chrono::Utc::now().timestamp_millis(),
   };
-  eprintln!("segment len: {}", segment.samples.len());
+  //eprintln!("segment len: {}", segment.samples.len());
   tx.send(Some(segment)).unwrap();
   //let file_name = std::path::PathBuf::from("tmp/test.wav");
   //save_buf_to_file(&segment.samples, &file_name)
