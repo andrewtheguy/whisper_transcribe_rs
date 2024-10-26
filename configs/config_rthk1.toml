@@ -1,4 +1,5 @@
 
+source = "url"
 url = "https://rthkradio1-live.akamaized.net/hls/live/2035313/radio1/master.m3u8"
 database_name = "example_rthk1"
 language="yue"

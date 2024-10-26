@@ -11,8 +11,16 @@ pub struct DatabaseConfig {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Source {
+    Url,
+    Microphone,
+}
+
+#[derive(Deserialize)]
 pub struct Config {
-    pub url: String,
+    pub source: Source,
+    pub url: Option<String>,
     pub database_config: Option<DatabaseConfig>,
     pub language: String,
     pub show_name: String,

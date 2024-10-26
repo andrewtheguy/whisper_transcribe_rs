@@ -1,3 +1,4 @@
+source = "url"
 url = "http://mobilewzrc.serverroom.us:6916/"
 language="yue"
 show_name = "am1430"

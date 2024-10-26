@@ -1,4 +1,5 @@
-url = "microphone://default"
+source = "microphone"
+#url = "microphone://default"
 language="yue" #cantonese
 show_name = "microphone"
 
