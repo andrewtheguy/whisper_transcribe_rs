@@ -14,6 +14,7 @@ use crate::web::start_webserver;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
+use std::path::PathBuf;
 use std::thread;
 use serde_json::json;
 
@@ -191,7 +192,7 @@ where
 
 
 
-fn save_buf_to_file(buf: &Vec<i16>, file_name: &str) {
+fn save_buf_to_file(buf: &Vec<i16>, file_name: &PathBuf) {
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: 16000,
@@ -284,29 +285,49 @@ fn get_vad() -> Result<VoiceActivityDetector, Box<dyn std::error::Error>> {
 }
 
 pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
-    //let url = "https://rthkradio2-live.akamaized.net/hls/live/2040078/radio2/master.m3u8";
-    //let url = "https://www.am1430.net/wp-content/uploads/show/%E7%B9%BC%E7%BA%8C%E6%9C%89%E5%BF%83%E4%BA%BA/2023/2024-10-03.mp3";
-    //println!("First argument: {}", first_argument);
 
-    let url = config.url.as_str();
+    let folder = std::path::Path::new("tmp").join(&config.show_name);
+
+    match std::fs::remove_dir_all(&folder) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }.expect("failed to remove folder to save files");
+
+    std::fs::create_dir_all(&folder).expect("failed to create folder to save files");
 
     let mut num = 1;
     let closure_annotated = |_has_speech_begin_timestamp,buf: &Vec<i16>| {
-        let file_name = format!("tmp/predict.stream.speech.{}.wav", format!("{:0>3}",num));
+        let file_name = folder.join(format!("predict.stream.speech.{}.wav", format!("{:0>3}",num)));
         save_buf_to_file(&buf, &file_name);
         num += 1;
     };
 
-    let (tx, rx) = bounded::<Option<Segment>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+    match &config.source {
+        crate::config::Source::Url => {
 
+            let (tx, rx) = bounded::<Option<Segment>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
 
-    process_with_vad(&rx,
-         || {
-            streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+            let url = config.url.as_ref().expect("url is required when source is url");
+
+            process_with_vad(&rx,
+                || {
+                   streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+               },
+               closure_annotated)?;
+
+               debug!("finished streaming to file");
         },
-        closure_annotated)?;
+        crate::config::Source::Microphone => {
+            let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
+            process_with_vad(&rx,
+                || {
+                    record_from_mic(&tx,SAMPLE_SIZE).unwrap();
+                },
+                closure_annotated)?;
+        }
+    }
 
-        debug!("finished streaming to file");
     Ok(())
 }
 
@@ -316,7 +337,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     let rt = get_runtime();
     //eprintln!("transcribe_url");
 
-    let url: &str = config.url.as_str();
+    let source = &config.source;
     let mut pool: Option<Pool<_>> = None;
 
     if let Some(database_config) = &config.database_config {
@@ -486,41 +507,25 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
 
     };
 
-    //let mut model = get_vad();
-
-    if url == "microphone://default" {
-        let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
-        process_with_vad(&rx,
-            || {
-                //loop {
-                record_from_mic(&tx,SAMPLE_SIZE).unwrap();
-                //}
-            },
-            closure_annotated)?;
-    }else if url == "webserver://default" {
-        let rt = get_runtime();
-        rt.block_on(async {
-            start_webserver(5002).await
-        });
-    }else if url == "audio_output://default" {
-        return Err("audio_output://default not supported".into());
-        // let mic_channel_pair = &*MIC_CHANNEL_PAIR;
-        // process_with_vad(&mic_channel_pair.rx,
-        //     || {
-        //         //loop {
-        //         record_computer_output(&mic_channel_pair.tx,SAMPLE_SIZE).unwrap();
-        //         //}
-        //     },
-        //     closure_annotated)?;
-    } else {
-
-        let (tx, rx) = bounded::<Option<Segment>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
-
-        process_with_vad(&rx,
-            || {
-                streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
-            },closure_annotated)?;
-
+    match source {
+        crate::config::Source::Url => {
+            let url = config.url.as_ref().expect("url is required when source is url");
+            let (tx, rx) = bounded::<Option<Segment>>((TARGET_SAMPLE_RATE*60).try_into().unwrap());
+            process_with_vad(&rx,
+                || {
+                    streaming_url(url,TARGET_SAMPLE_RATE,SAMPLE_SIZE,&tx).unwrap();
+                },
+                closure_annotated)?;
+        },
+        crate::config::Source::Microphone => {
+            let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
+            process_with_vad(&rx,
+                || {
+                    record_from_mic(&tx,SAMPLE_SIZE).unwrap();
+                },
+                closure_annotated)?;
+        }
     }
+
     Ok(())
 }

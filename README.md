@@ -5,7 +5,7 @@ need to install ffmpeg separately
 - create a config toml file
 - then run
 ```
-cargo run -- --config-file config.toml process-url
+cargo run -- --config-file config.toml transcribe (or save-to-file)
 ```
 
 set postgres password:

@@ -1,6 +1,6 @@
+source = "url"
 url = "http://mobilewzrc.serverroom.us:6916/"
 language="yue"
-operation = "transcribe" # or save_to_file
 show_name = "am1430"
 
 [database_config]
