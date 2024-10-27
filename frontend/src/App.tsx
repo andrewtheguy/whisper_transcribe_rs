@@ -38,7 +38,8 @@ function App() {
       new_after_id = object.id;
       return accumulator;
     },[]);
-    setTranscripts(transcripts.concat(arr).slice(-100));
+    //setTranscripts(transcripts.concat(arr).slice(-100));
+    setTranscripts(transcripts.concat(arr));
 
     if (new_after_id !== null) {
       setAfterId(new_after_id);
