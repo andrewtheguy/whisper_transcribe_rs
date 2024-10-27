@@ -7,9 +7,12 @@
 use axum::{
   http::{header, HeaderValue, StatusCode, Uri}, response::{Html, IntoResponse, Response}, routing::{get, Router}, Json
 };
+use chrono::{DateTime, FixedOffset, Utc};
 use crossbeam::channel::Sender;
 use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sqlx::{Pool, Postgres, Row};
 use std::net::SocketAddr;
 
 use tower_http::trace::TraceLayer;
@@ -217,6 +220,56 @@ async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>
   }))
 }
 
+#[derive(Deserialize)]
+struct TranscriptQuery {
+  after_id: Option<i32>,
+  show_name: String,
+}
+
+#[axum::debug_handler]
+async fn get_transcripts(state: axum::extract::State<AppState>,q: axum::extract::Query<TranscriptQuery>) -> impl IntoResponse {
+  let mut after_id = q.after_id.unwrap_or(0);
+
+  if after_id == 0 {
+    let row = sqlx::query(r#"SELECT id FROM transcripts where show_name = $1 order by id desc limit 1 offset 100"#)
+    .bind(q.show_name.clone())
+    .fetch_one(&state.pool).await.unwrap();
+    after_id = row.try_get("id").unwrap();
+  }
+
+  let pool = &state.pool;
+  let rows_stream = sqlx::query(r#"SELECT id,"timestamp",content FROM transcripts where show_name = $1 and id > $2 limit 1000"#)
+  .bind(q.show_name.clone())
+  .bind(after_id)
+  .fetch(pool).map(|row| {
+    let row = row.unwrap();
+    let id: i32 = row.try_get("id").unwrap();
+    let timestamp: chrono::NaiveDateTime = row.try_get("timestamp").unwrap();
+    let content: String = row.try_get("content").unwrap();
+    let test =timestamp.and_utc().to_rfc3339();
+    json!({"id": id, "timestamp": test, "content": content}).to_string()
+  })
+  .map(|json_row| Ok::<String, std::convert::Infallible>(format!("{}\n",json_row).into()));
+  
+  // Create the Axum body from the stream
+  let body = axum::body::Body::from_stream(rows_stream);
+  
+  body
+}
+
+async fn get_show_names(state: axum::extract::State<AppState>) -> impl IntoResponse {
+  let pool = &state.pool;
+  let mut rows = sqlx::query(r#"SELECT distinct show_name FROM transcripts"#)
+  .fetch(pool);
+  let mut show_names = Vec::new();
+  while let Some(row) = rows.next().await {
+    let row = row.unwrap();
+    let show_name: String = row.try_get("show_name").unwrap();
+    show_names.push(show_name);
+  }
+  Json(show_names)
+}
+
 #[derive(Serialize, Deserialize)]
 struct TestResponse {
   message: String,
@@ -231,6 +284,7 @@ struct SessionIdInput {
 #[derive(Clone)]
 struct AppState {
   tx: Sender::<Option<Segment>>,
+  pool: Pool<Postgres>,
   session_id: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
@@ -240,12 +294,13 @@ pub struct TranscribeWebServer {
 }
 
 impl TranscribeWebServer {
-  pub fn new(port: u16, tx: Sender::<Option<Segment>>) -> Self {
+  pub fn new(port: u16, tx: Sender::<Option<Segment>>, pool: Pool<Postgres>) -> Self {
     Self {
       port,
       state: AppState {
         tx,
         session_id: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+        pool,
       }
     }
   }
@@ -260,8 +315,11 @@ impl TranscribeWebServer {
     .route("/index.html", get(index_handler))
     .route("/vite.svg", get(static_handler))
     .route("/assets/*file", get(static_handler))
-
+    
     .route("/api/test", axum::routing::get(test_api))
+    .route("/api/get_transcripts", axum::routing::get(get_transcripts))
+    .route("/api/get_show_names", axum::routing::get(get_show_names))
+
     .route("/api/set_session_id", axum::routing::post(set_session_id))
     .route("/api/audio_input", axum::routing::post(audio_input))
     

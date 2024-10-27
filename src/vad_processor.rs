@@ -3,9 +3,11 @@ use hound::{self};
 use log::{debug, trace};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 //use sqlx::sqlite::{SqliteConnectOptions};
-use sqlx::Pool;
+use sqlx::{pool, Pool, Postgres};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
+use tokio::runtime::Runtime;
 
+use crate::config::DatabaseConfig;
 use crate::download_utils::{get_whisper_model, get_silero_model};
 use crate::key_ring_utils::get_password;
 use crate::runtime_utils::{get_runtime};
@@ -331,10 +333,16 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
             let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
             let rt = get_runtime();
 
+            let pool = if let Some(database_config) = &config.database_config {
+                init_db_from_config(rt,database_config)?
+            } else {
+                panic!("database config is required when source is web for pulling data for web");
+            };
+
             process_with_vad(&rx,
                 || {
                     rt.block_on(async {
-                        TranscribeWebServer::new(5002,tx.clone()).start_webserver().await
+                        TranscribeWebServer::new(5002,tx.clone(),pool).start_webserver().await
                     });
                 },
                 closure_annotated)?;
@@ -342,6 +350,46 @@ pub fn stream_to_file(config: Config) -> Result<(), Box<dyn std::error::Error>>{
     }
 
     Ok(())
+}
+
+fn init_db_from_config(rt: &Runtime,database_config: &DatabaseConfig) -> Result<Pool<sqlx::Postgres>, Box<dyn std::error::Error>> {
+    let database_password = get_password(&database_config.database_password_key)?;
+    //println!("My password is '{}'", database_password);
+
+    rt.block_on(async {
+        //let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
+        // let pool2 = SqlitePool::connect_with(SqliteConnectOptions::new().filename(&path)
+        //     .create_if_missing(true)).await.unwrap();
+        // sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
+        //             id INTEGER PRIMARY KEY,
+        //             timestamp datetime NOT NULL,
+        //             content TEXT NOT NULL
+        //     );"#
+        // ).execute(&pool2).await?;
+        let ssl_mode = match database_config.require_ssl {
+            true => sqlx::postgres::PgSslMode::Require,
+            _ => sqlx::postgres::PgSslMode::Prefer
+        };
+        let pool2 = PgPoolOptions::new().connect_with(PgConnectOptions::new()
+            .ssl_mode(ssl_mode)
+            .host(&database_config.database_host)
+            .port(database_config.database_port.unwrap_or(5432))
+            .database(database_config.database_name.as_str())
+            .username(database_config.database_user.as_str())
+            .password(database_password.as_str())
+        ).await?;
+        sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
+            id serial PRIMARY KEY,
+            show_name varchar(255) NOT NULL,
+            "timestamp" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+            content TEXT NOT NULL
+            );"#
+            ).execute(&pool2).await?;
+        sqlx::query(r#"create index if not exists transcript_show_name_idx ON transcripts (show_name);"#
+            ).execute(&pool2).await?;
+
+        Ok::<Pool<Postgres>, Box<dyn std::error::Error>>(pool2)
+    })
 }
 
 // also saves to db if database_name is provided in config
@@ -354,43 +402,7 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
     let mut pool: Option<Pool<_>> = None;
 
     if let Some(database_config) = &config.database_config {
-        let database_password = get_password(&database_config.database_password_key)?;
-        //println!("My password is '{}'", database_password);
-
-        pool = rt.block_on(async {
-            //let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
-            // let pool2 = SqlitePool::connect_with(SqliteConnectOptions::new().filename(&path)
-            //     .create_if_missing(true)).await.unwrap();
-            // sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
-            //             id INTEGER PRIMARY KEY,
-            //             timestamp datetime NOT NULL,
-            //             content TEXT NOT NULL
-            //     );"#
-            // ).execute(&pool2).await?;
-            let ssl_mode = match database_config.require_ssl {
-                true => sqlx::postgres::PgSslMode::Require,
-                _ => sqlx::postgres::PgSslMode::Prefer
-            };
-            let pool2 = PgPoolOptions::new().connect_with(PgConnectOptions::new()
-                .ssl_mode(ssl_mode)
-                .host(&database_config.database_host)
-                .port(database_config.database_port.unwrap_or(5432))
-                .database(database_config.database_name.as_str())
-                .username(database_config.database_user.as_str())
-                .password(database_password.as_str())
-            ).await?;
-            sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
-                id serial PRIMARY KEY,
-                show_name varchar(255) NOT NULL,
-                "timestamp" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
-                content TEXT NOT NULL
-                );"#
-                ).execute(&pool2).await?;
-            sqlx::query(r#"create index if not exists transcript_show_name_idx ON transcripts (show_name);"#
-                ).execute(&pool2).await?;
-
-            Ok::<Option<Pool<_>>, Box<dyn std::error::Error>>(Some(pool2))
-        })?;
+        pool = Some(init_db_from_config(rt,database_config)?);
     }
 
 
@@ -542,10 +554,13 @@ pub fn transcribe_url(config: Config,num_transcribe_threads: Option<usize>,model
             let (tx, rx) = unbounded::<Option<Segment>>().try_into().unwrap();
             let rt = get_runtime();
 
+            let pool2 = pool.clone().expect("database pool is required when source is web for pulling data for web");
+
             process_with_vad(&rx,
                 || {
+                    let pool2 = pool2.clone();
                     rt.block_on(async {
-                        TranscribeWebServer::new(5002,tx.clone()).start_webserver().await
+                        TranscribeWebServer::new(5002,tx.clone(),pool2).start_webserver().await
                     });
                 },
                 closure_annotated)?;
