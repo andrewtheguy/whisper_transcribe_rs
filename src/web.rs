@@ -5,23 +5,17 @@
 //! ```
 
 use axum::{
-  http::{header, request, HeaderValue, StatusCode, Uri}, response::{Html, IntoResponse, Response}, routing::{get, Router}, Json
+  http::{header, HeaderValue, StatusCode, Uri}, response::{Html, IntoResponse, Response}, routing::{get, Router}, Json
 };
 use crossbeam::channel::Sender;
-use log::info;
 use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncBufRead;
 use std::net::SocketAddr;
 
-use tower_http::{
-  services::{ServeDir, ServeFile},
-  trace::TraceLayer,
-};
+use tower_http::trace::TraceLayer;
 
-use crate::{streaming::Segment, vad_processor::{save_buf_to_file, SAMPLE_SIZE}};
+use crate::{streaming::Segment, vad_processor::SAMPLE_SIZE};
 
-use tokio::io::{self, AsyncReadExt};
 
 use futures::StreamExt;
 

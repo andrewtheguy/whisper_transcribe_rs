@@ -1,4 +1,3 @@
-use axum::serve;
 use crossbeam::channel::{bounded, unbounded, Receiver};
 use hound::{self};
 use log::{debug, trace};
@@ -15,7 +14,6 @@ use crate::web::TranscribeWebServer;
 use crate::{config::Config, streaming::streaming_url, vad::VoiceActivityDetector};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
-use core::panic;
 use std::path::PathBuf;
 use std::thread;
 use serde_json::json;

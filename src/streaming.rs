@@ -3,7 +3,7 @@ use chrono::Utc;
 use crossbeam::channel::Sender;
 use log::{debug, error, info, trace, warn};
 use serde_json::json;
-use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep, time};
+use std::{io::{BufReader, Read}, process::{Command, Stdio}, thread::sleep};
 use serde::{Deserialize, Serialize};
 use std::str;
 use read_chunks::ReadExt;

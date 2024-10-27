@@ -9,7 +9,6 @@ use crossbeam::channel::Sender;
 use dasp_sample::{Sample};
 use log::{error, trace};
 use samplerate::{convert, ConverterType};
-use std::io::{self, Read};
 use console::Term;
 
 use crate::streaming::Segment;

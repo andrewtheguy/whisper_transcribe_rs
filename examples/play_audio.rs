@@ -1,9 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Sample, StreamConfig};
-use sha1::digest::core_api::Buffer;
-use tokio_util::bytes::buf;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{Read};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
 
@@ -28,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create a stream to play audio
-    let mut stream = output_device.build_output_stream(
+    let stream = output_device.build_output_stream(
         &desired_config,
         move |data: &mut [f32], _| {
             for sample in data {
