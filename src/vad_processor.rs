@@ -4,6 +4,7 @@ use log::{debug, trace};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 //use sqlx::sqlite::{SqliteConnectOptions};
 use sqlx::{pool, Pool, Postgres};
+use sqlx::ConnectOptions;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use tokio::runtime::Runtime;
 
@@ -361,14 +362,17 @@ fn init_db_from_config(rt: &Runtime,database_config: &DatabaseConfig) -> Result<
             true => sqlx::postgres::PgSslMode::Require,
             _ => sqlx::postgres::PgSslMode::Prefer
         };
-        let pool2 = PgPoolOptions::new().connect_with(PgConnectOptions::new()
+
+        let options = PgConnectOptions::new()
             .ssl_mode(ssl_mode)
             .host(&database_config.database_host)
             .port(database_config.database_port.unwrap_or(5432))
             .database(database_config.database_name.as_str())
             .username(database_config.database_user.as_str())
             .password(database_password.as_str())
-        ).await?;
+            .log_statements(log::LevelFilter::Trace);
+
+        let pool2 = PgPoolOptions::new().connect_with(options).await?;
         sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
             id bigserial PRIMARY KEY,
             show_name varchar(255) NOT NULL,
