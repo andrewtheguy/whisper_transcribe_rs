@@ -34,25 +34,34 @@ const AudioStreamComponent = () => {
         const text = await res.text();
         console.log(res.status);
         console.log(text);
+
+        if (Math.floor(res.status / 100) === 4) {
+            console.error('client error, should not continue');
+            return false;
+        }
+        return true;
 }, []);
 
 
-  const processfunc = useCallback(() => {
+  const processfunc = useCallback(async () => {
+
+    let continueRecording = true;
+
+    if (bufferRef.current.length > 16000) {
+        const int16Data = bufferRef.current;
+        bufferRef.current = new Uint8Array();
+        continueRecording = await callweb(int16Data);
+    }
 
 
-        if (bufferRef.current.length > 16000) {
-            const int16Data = bufferRef.current;
-            bufferRef.current = new Uint8Array();
-            callweb(int16Data);
-        }
-
-
+    if(continueRecording){
         setTimeout(() => {
             processfunc();
-          }, 1000); // delay of 1 second
-
-
-   }, []);
+        }, 1000); // delay of 1 second
+    }else{
+        stopRecording();
+    }
+  }, []);
 
    useEffect(() => {
 

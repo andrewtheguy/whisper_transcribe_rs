@@ -5,7 +5,7 @@
 //! ```
 
 use axum::{
-    http::{header, request, StatusCode, Uri}, response::{Html, IntoResponse, Response}, routing::{get, Router}, Json
+    http::{header, request, HeaderValue, StatusCode, Uri}, response::{Html, IntoResponse, Response}, routing::{get, Router}, Json
   };
 use crossbeam::channel::Sender;
 use log::info;
@@ -135,23 +135,41 @@ async fn read_stream(mut body_stream: axum::body::BodyDataStream,tx: &Sender::<O
   Ok(())
 }
 
+fn parse_timestamp_millis(ts: &HeaderValue) -> Result<i64, Box<dyn std::error::Error>> {
+  Ok(ts.to_str()?.parse::<i64>()?)
+}
+
 #[axum::debug_handler]
-async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>,request: axum::http::Request<axum::body::Body>) -> (StatusCode,Json<TestResponse>) {
+async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>,request: axum::http::Request<axum::body::Body>) -> Result<Json<TestResponse>, impl IntoResponse> {
 
   let timestamp_millis = if let Some(ts)= request.headers().get("X-Recording-Timestamp") {
-     ts.to_str().unwrap().parse::<i64>().unwrap().clone()
+     match parse_timestamp_millis(ts) {
+       Ok(ts) => ts,
+       Err(e) => {
+        return Err((StatusCode::BAD_REQUEST,Json(TestResponse {
+         message: format!("error parsing timestamp: {}", e),
+        })));
+       }
+      }
   } else {
-    return (StatusCode::BAD_REQUEST,Json(TestResponse {
+    return Err((StatusCode::BAD_REQUEST,Json(TestResponse {
       message: "missing timestamp".to_string(),
-    }));
+    })));
   };
   
 
   let body_stream = request.into_body().into_data_stream();
 
-  read_stream(body_stream, &state.tx, timestamp_millis).await.unwrap();
+  match read_stream(body_stream, &state.tx, timestamp_millis).await {
+    Ok(_) => {},
+    Err(e) => {
+      return Err((StatusCode::INTERNAL_SERVER_ERROR,Json(TestResponse {
+        message: format!("error reading stream: {}", e),
+      })));
+    }
+  };
 
-  (StatusCode::OK,Json(TestResponse {
+  Ok(Json(TestResponse {
       message: "success".to_string(),
   }))
 }
