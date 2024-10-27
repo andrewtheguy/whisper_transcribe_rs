@@ -33,6 +33,19 @@ set `source = "microphone"` on config toml
 
 set `source = "web"` on config toml
 
+## working web front end
+
+```
+cd front_end
+npm run dev
+# visit http://localhost:5173/
+```
+
+update production (rust's embedded static asset)
+```
+npm run build
+```
+
 TODO:
 
 - still need improvement on silero vad to include clips before and after speech/no speech transitions
