@@ -266,9 +266,11 @@ impl TranscribeWebServer {
     .route("/index.html", get(index_handler))
     .route("/vite.svg", get(static_handler))
     .route("/assets/*file", get(static_handler))
+
     .route("/api/test", axum::routing::get(test_api))
     .route("/api/set_session_id", axum::routing::post(set_session_id))
     .route("/api/audio_input", axum::routing::post(audio_input))
+    
     .with_state(self.state.clone())
     .fallback_service(get(not_found));
     
