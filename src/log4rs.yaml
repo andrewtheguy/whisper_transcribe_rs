@@ -63,3 +63,9 @@ loggers:
     additive: false
     appenders:
       - file_streaming
+
+  # sqlx:
+  #   level: trace
+  #   additive: false
+  #   appenders:
+  #     - console

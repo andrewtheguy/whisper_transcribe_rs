@@ -231,25 +231,18 @@ struct TranscriptQuery {
 async fn get_transcripts(state: axum::extract::State<AppState>,q: axum::extract::Query<TranscriptQuery>) -> impl IntoResponse {
   let query;
   if let Some (before_id) = q.before_id {
-    let row = match sqlx::query(r#"SELECT id FROM transcripts where show_name = $1 and id < $2 order by id desc limit 1 offset 100"#)
+    let row = sqlx::query(r#"SELECT id FROM transcripts where show_name = $1 and id < $2 order by id desc limit 1 offset 100"#)
     .bind(q.show_name.clone())
     .bind(before_id)
-    .fetch_one(&state.pool).await {
-      Ok(row) => row,
-      Err(e) => {
-        match e {
-          sqlx::Error::RowNotFound => {
-            return (StatusCode::OK,"").into_response()
-          }
-          _ => {
-            eprintln!("error getting id: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, "error getting id:").into_response()
-          }
-        }
-      }
+    .fetch_optional(&state.pool).await.unwrap();
+
+    let after_id_2: i64 =if let Some(row) = row {
+       row.try_get("id").unwrap()
+    } else {
+      i64::MAX
     };
 
-    let after_id_2: i64 = row.try_get("id").unwrap();
+    
     
     let pool = &state.pool;
     query = sqlx::query(r#"SELECT id,"timestamp",content FROM transcripts where show_name = $1 and id >= $2 and id < $3 order by id limit 1000"#)
@@ -263,8 +256,12 @@ async fn get_transcripts(state: axum::extract::State<AppState>,q: axum::extract:
     if after_id == 0 {
       let row = sqlx::query(r#"SELECT id FROM transcripts where show_name = $1 order by id desc limit 1 offset 100"#)
       .bind(q.show_name.clone())
-      .fetch_one(&state.pool).await.unwrap();
-      after_id = row.try_get("id").unwrap();
+      .fetch_optional(&state.pool).await.unwrap();
+      if let Some(row) = row {
+        after_id = row.try_get("id").unwrap();
+      } else {
+        after_id = 0;
+      }
     }
 
     let pool = &state.pool;

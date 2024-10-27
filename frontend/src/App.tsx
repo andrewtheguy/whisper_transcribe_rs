@@ -2,7 +2,7 @@
 //import viteLogo from '/vite.svg'
 import './App.css'
 import AudioStreamComponent from './AudioStreamComponent'
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import ChatComponent from './ChatComponent';
 
 interface Transcript {
@@ -11,15 +11,58 @@ interface Transcript {
   content: string;
 }
 
+interface MessageBox {
+  transcripts: Transcript[];
+  afterId: number;
+}
+
+interface MessageAction {
+  type: string;
+  payload?: Transcript[];
+  newAfterId?: number;
+}
+
+const messageReducer = (state: MessageBox, action: MessageAction) => {
+  let newState = {...state};
+  switch (action.type) {
+    case "ADD_ITEMS_END":
+      //console.log('ADD_ITEMS_END action.payload', action.payload);
+      newState.transcripts = [...state.transcripts,...action.payload || []];
+      if (action.newAfterId !== undefined) {
+        newState.afterId = action.newAfterId;
+      }
+      break;
+    case "ADD_ITEMS_START":
+      //console.log('ADD_ITEMS_START action.payload', action.payload);
+      newState.transcripts = [...action.payload || [],...state.transcripts];
+      break;
+    case "CLEAR":
+      newState.transcripts = [];
+      newState.afterId = 0;
+      break;
+    //case "SET_AFTER_ID":
+    //  console.log('SET_AFTER_ID action.payload', action.newAfterId);
+    //  newState.afterId = action.newAfterId || 0;
+    //  break;
+    default:
+      break;
+  }
+  //console.log('newState', newState);
+  return newState;
+};
+
+
 function App() {
   
+  const [messageBox, dispatch] = useReducer(messageReducer, {transcripts: [], afterId: 0});
   
-  const [transcripts, setTranscripts] = useState<Transcript[]>([]);
-  const [afterId, setAfterId] = useState(0);
+  //const [transcripts, setTranscripts] = useState<Transcript[]>([]);
+  //const [afterId, setAfterId] = useState(0);
   const [counter, setCounter] = useState(0);
   const [showName, setShowName] = useState<string | null>(null);
   const [showNameList, setShowNameList] = useState<string[] | null>(null);
   const [pauseFetchAfter, setPauseFetchAfter] = useState(false);
+  const timerRef = useRef<Number | null>(null);
   
   async function fetchTranscripts(){
     if(showName === null){
@@ -28,13 +71,14 @@ function App() {
     if(pauseFetchAfter){
       return;
     }
+    const {afterId} = messageBox;
     const res = await fetch('/api/get_transcripts?' + new URLSearchParams({
       show_name: showName,
       after_id: afterId.toString(),
     }));
     const data = await res.text();
     const lines = data.split(/\n/);
-    let new_after_id = null;
+    let newAfterId = undefined;
     const arr = lines.reduce<Transcript[]>((accumulator, line) => {
       //console.log(`line: ${line.length}`);
       if (line.length === 0) {
@@ -42,22 +86,21 @@ function App() {
       }
       const object = JSON.parse(line);
       accumulator.push({id: object.id, timestamp: object.timestamp, content: object.content});
-      new_after_id = object.id;
+      newAfterId = object.id;
       return accumulator;
     },[]);
+    //debugger;
     //setTranscripts(transcripts.concat(arr).slice(-100));
-    setTranscripts(transcripts.concat(arr));
+    dispatch({ type: "ADD_ITEMS_END", payload: arr, newAfterId: newAfterId });
+
+    setCounter(counter + 1);
     
-    if (new_after_id !== null) {
-      setAfterId(new_after_id);
-    }else{
-      setCounter(counter + 1);
-    }
     //setTimeout(fetchTranscripts, 500);
   }
   
   
   async function fetchPrevTranscripts(){
+    const {transcripts} = messageBox;
     if(showName === null){
       return;
     }
@@ -84,7 +127,7 @@ function App() {
       },[]);
       console.log('arr', arr);
       //setTranscripts(transcripts.concat(arr).slice(-100));
-      setTranscripts(arr.concat(transcripts));
+      dispatch({ type: "ADD_ITEMS_START", payload: arr });
     }finally{
       setPauseFetchAfter(false);
     }
@@ -92,25 +135,33 @@ function App() {
   }
   
   useEffect(() => {
+    //const {transcripts, afterId} = messageBox;
     if(showName !== null){
-      console.log('afterId: ' + afterId);
+      //console.log('afterId: ' + afterId);
       if(!pauseFetchAfter){
-        setTimeout(fetchTranscripts, 500);
+        timerRef.current=setTimeout(fetchTranscripts, 500);
       }
     }
-  },[afterId,counter,showName,pauseFetchAfter]);
+
+    return () => {
+      if(timerRef.current){
+        clearTimeout(timerRef.current as number);
+      }
+    };
+  },[counter,showName,pauseFetchAfter]);
   
   useEffect(() => {
     const element = document.getElementById('transcripts');
     if (element) {
       element.scrollTop = element?.scrollHeight;
     }
-  },[transcripts]);
+  },[messageBox.transcripts]);
   
   useEffect(() => {
     
-    setTranscripts([]);
-    setAfterId(0);
+    //setTranscripts([]);
+    dispatch({ type: "CLEAR", });
+    //setAfterId(0);
     
   }, [showName]);
   
@@ -125,6 +176,8 @@ function App() {
   if(showNameList === null){
     return <div>Loading...</div>;
   }
+
+  const {transcripts} = messageBox;
   
   const transcriptList = transcripts.map((transcript) => (
     <div key={transcript.id} style={{textAlign: "left"}}>
@@ -148,7 +201,9 @@ function App() {
     {showNameList?.map((name) => (
       <option key={name} value={name}>{name}</option>
     ))}
-    </select>&nbsp;<button onClick={() => fetchPrevTranscripts()}>Load Prev</button>
+    </select>
+    <button onClick={() => fetchPrevTranscripts()}>Load Prev</button>
+    {/* <button onClick={() => fetchTranscripts()}>Load More</button> */}
     <ChatComponent messages={transcriptList} />
     </>
   )
