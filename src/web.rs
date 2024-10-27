@@ -80,7 +80,7 @@ async fn test_api(axum::extract::State(state): axum::extract::State<AppState>) -
   })
 }
 
-fn process_chunk(buffer: &[u8],tx: &Sender::<Option<Segment>>) {
+fn process_chunk(buffer: &[u8],tx: &Sender::<Option<Segment>>,timestamp_millis: i64) {
 
   // Convert the raw byte buffer into Vec<i16>
   let mut samples: Vec<i16> = Vec::with_capacity(buffer.len() / 2); // i16 is 2 bytes
@@ -89,9 +89,11 @@ fn process_chunk(buffer: &[u8],tx: &Sender::<Option<Segment>>) {
       samples.push(sample);
   }
 
+  //eprintln!("timestamp_millis: {}", timestamp_millis);
+
   let segment = Segment {
     samples: samples,
-    timestamp_millis: chrono::Utc::now().timestamp_millis(),
+    timestamp_millis: timestamp_millis,
   };
   //eprintln!("segment len: {}", segment.samples.len());
   tx.send(Some(segment)).unwrap();
@@ -99,7 +101,8 @@ fn process_chunk(buffer: &[u8],tx: &Sender::<Option<Segment>>) {
   //save_buf_to_file(&segment.samples, &file_name)
 }
 
-async fn read_stream(mut body_stream: axum::body::BodyDataStream,tx: &Sender::<Option<Segment>>) -> Result<(), Box<dyn std::error::Error>> {
+async fn read_stream(mut body_stream: axum::body::BodyDataStream,tx: &Sender::<Option<Segment>>, timestamp_millis: i64) -> Result<(), Box<dyn std::error::Error>> {
+  
   const CHUNK_SIZE: usize = SAMPLE_SIZE as usize * 2; // 2 bytes per sample
 
   let mut buffer = Vec::with_capacity(CHUNK_SIZE);
@@ -112,7 +115,7 @@ async fn read_stream(mut body_stream: axum::body::BodyDataStream,tx: &Sender::<O
               // Process in CHUNK_SIZE portions if the buffer has enough data
               while buffer.len() >= CHUNK_SIZE {
                   let chunk_to_process = buffer.drain(..CHUNK_SIZE).collect::<Vec<u8>>();
-                  process_chunk(&chunk_to_process,&tx);
+                  process_chunk(&chunk_to_process,&tx,timestamp_millis);
               }
           }
           Err(e) => {
@@ -124,7 +127,7 @@ async fn read_stream(mut body_stream: axum::body::BodyDataStream,tx: &Sender::<O
 
   // Process any remaining data in the buffer
   if !buffer.is_empty() {
-      process_chunk(&buffer,&tx);
+      process_chunk(&buffer,&tx,timestamp_millis);
   }
 
   //tx.send(None).unwrap();
@@ -133,15 +136,24 @@ async fn read_stream(mut body_stream: axum::body::BodyDataStream,tx: &Sender::<O
 }
 
 #[axum::debug_handler]
-async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>,request: axum::http::Request<axum::body::Body>) -> Json<TestResponse> {
-  //let body = request.into_body();
+async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>,request: axum::http::Request<axum::body::Body>) -> (StatusCode,Json<TestResponse>) {
+
+  let timestamp_millis = if let Some(ts)= request.headers().get("X-Recording-Timestamp") {
+     ts.to_str().unwrap().parse::<i64>().unwrap().clone()
+  } else {
+    return (StatusCode::BAD_REQUEST,Json(TestResponse {
+      message: "missing timestamp".to_string(),
+    }));
+  };
+  
+
   let body_stream = request.into_body().into_data_stream();
 
-  read_stream(body_stream, &state.tx).await.unwrap();
+  read_stream(body_stream, &state.tx, timestamp_millis).await.unwrap();
 
-  Json(TestResponse {
+  (StatusCode::OK,Json(TestResponse {
       message: "success".to_string(),
-  })
+  }))
 }
 
 #[derive(Serialize, Deserialize)]

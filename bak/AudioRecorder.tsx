@@ -38,6 +38,7 @@ const AudioRecorder = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/octet-stream',
+                    'X-Recording-Timestamp': Date.now().toString(),
                 },
                 body: pcmData // ArrayBuffer,
             });
