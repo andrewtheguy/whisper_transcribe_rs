@@ -45,7 +45,7 @@
   color: #888;
 }
 
-#transcripts {
+.chat-box {
   width: 100%;
   overflow-y: scroll;
   flex-grow: 1;

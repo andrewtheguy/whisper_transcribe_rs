@@ -3,6 +3,7 @@
 import './App.css'
 import AudioStreamComponent from './AudioStreamComponent'
 import { useEffect, useState } from 'react';
+import ChatComponent from './ChatComponent';
 
 function App() {
   const [transcripts, setTranscripts] = useState<JSX.Element[]>([]);
@@ -96,7 +97,7 @@ function App() {
           <option key={name} value={name}>{name}</option>
         ))}
       </select>
-      <div id="transcripts">{transcripts}</div>
+      <ChatComponent messages={transcripts} />
     </>
   )
 }
