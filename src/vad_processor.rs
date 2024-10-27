@@ -357,15 +357,6 @@ fn init_db_from_config(rt: &Runtime,database_config: &DatabaseConfig) -> Result<
     //println!("My password is '{}'", database_password);
 
     rt.block_on(async {
-        //let path = Path::new(".").join("tmp").join(format!("{}.sqlite",database_name));
-        // let pool2 = SqlitePool::connect_with(SqliteConnectOptions::new().filename(&path)
-        //     .create_if_missing(true)).await.unwrap();
-        // sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
-        //             id INTEGER PRIMARY KEY,
-        //             timestamp datetime NOT NULL,
-        //             content TEXT NOT NULL
-        //     );"#
-        // ).execute(&pool2).await?;
         let ssl_mode = match database_config.require_ssl {
             true => sqlx::postgres::PgSslMode::Require,
             _ => sqlx::postgres::PgSslMode::Prefer
@@ -379,7 +370,7 @@ fn init_db_from_config(rt: &Runtime,database_config: &DatabaseConfig) -> Result<
             .password(database_password.as_str())
         ).await?;
         sqlx::query(r#"CREATE TABLE IF NOT EXISTS transcripts (
-            id serial PRIMARY KEY,
+            id bigserial PRIMARY KEY,
             show_name varchar(255) NOT NULL,
             "timestamp" TIMESTAMP WITHOUT TIME ZONE NOT NULL,
             content TEXT NOT NULL

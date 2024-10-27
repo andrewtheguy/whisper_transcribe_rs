@@ -222,28 +222,62 @@ async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>
 
 #[derive(Deserialize)]
 struct TranscriptQuery {
-  after_id: Option<i32>,
+  before_id: Option<i64>,
+  after_id: Option<i64>,
   show_name: String,
 }
 
 #[axum::debug_handler]
 async fn get_transcripts(state: axum::extract::State<AppState>,q: axum::extract::Query<TranscriptQuery>) -> impl IntoResponse {
-  let mut after_id = q.after_id.unwrap_or(0);
-
-  if after_id == 0 {
-    let row = sqlx::query(r#"SELECT id FROM transcripts where show_name = $1 order by id desc limit 1 offset 100"#)
+  let query;
+  if let Some (before_id) = q.before_id {
+    let row = match sqlx::query(r#"SELECT id FROM transcripts where show_name = $1 and id < $2 order by id desc limit 1 offset 100"#)
     .bind(q.show_name.clone())
-    .fetch_one(&state.pool).await.unwrap();
-    after_id = row.try_get("id").unwrap();
-  }
+    .bind(before_id)
+    .fetch_one(&state.pool).await {
+      Ok(row) => row,
+      Err(e) => {
+        match e {
+          sqlx::Error::RowNotFound => {
+            return (StatusCode::OK,"").into_response()
+          }
+          _ => {
+            eprintln!("error getting id: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "error getting id:").into_response()
+          }
+        }
+      }
+    };
 
-  let pool = &state.pool;
-  let rows_stream = sqlx::query(r#"SELECT id,"timestamp",content FROM transcripts where show_name = $1 and id > $2 limit 1000"#)
-  .bind(q.show_name.clone())
-  .bind(after_id)
-  .fetch(pool).map(|row| {
+    let after_id_2: i64 = row.try_get("id").unwrap();
+    
+    let pool = &state.pool;
+    query = sqlx::query(r#"SELECT id,"timestamp",content FROM transcripts where show_name = $1 and id >= $2 and id < $3 order by id limit 1000"#)
+    .bind(q.show_name.clone())
+    .bind(after_id_2)
+    .bind(before_id)
+    .fetch(pool);
+  } else {
+    let mut after_id = q.after_id.unwrap_or(0);
+    
+    if after_id == 0 {
+      let row = sqlx::query(r#"SELECT id FROM transcripts where show_name = $1 order by id desc limit 1 offset 100"#)
+      .bind(q.show_name.clone())
+      .fetch_one(&state.pool).await.unwrap();
+      after_id = row.try_get("id").unwrap();
+    }
+
+    let pool = &state.pool;
+    query = sqlx::query(r#"SELECT id,"timestamp",content FROM transcripts where show_name = $1 and id > $2 order by id limit 1000"#)
+    .bind(q.show_name.clone())
+    .bind(after_id)
+    .fetch(pool);
+  }
+  
+  
+  let rows_stream = query.map(|row| {
     let row = row.unwrap();
-    let id: i32 = row.try_get("id").unwrap();
+    let id: i64 = row.try_get("id").unwrap();
     let timestamp: chrono::NaiveDateTime = row.try_get("timestamp").unwrap();
     let content: String = row.try_get("content").unwrap();
     let test =timestamp.and_utc().to_rfc3339();
@@ -254,7 +288,7 @@ async fn get_transcripts(state: axum::extract::State<AppState>,q: axum::extract:
   // Create the Axum body from the stream
   let body = axum::body::Body::from_stream(rows_stream);
   
-  body
+  (StatusCode::OK,body).into_response()
 }
 
 async fn get_show_names(state: axum::extract::State<AppState>) -> impl IntoResponse {
@@ -319,7 +353,7 @@ impl TranscribeWebServer {
     .route("/api/test", axum::routing::get(test_api))
     .route("/api/get_transcripts", axum::routing::get(get_transcripts))
     .route("/api/get_show_names", axum::routing::get(get_show_names))
-
+    
     .route("/api/set_session_id", axum::routing::post(set_session_id))
     .route("/api/audio_input", axum::routing::post(audio_input))
     
