@@ -60,7 +60,8 @@ futures = "0.3.31"
 
 [dependencies.whisper-rs]
 git = "https://github.com/tazz4843/whisper-rs"
-version = "0.13.0"
+#version = "*"
+rev = "82679b0"
 default-features = false
 # all cross platform features
 features = [
@@ -69,6 +70,7 @@ features = [
 
 [target.'cfg(target_os = "macos")'.dependencies.whisper-rs]
 git = "https://github.com/tazz4843/whisper-rs"
-version = "0.13.0"
+#version = "*"
+rev = "82679b0"
 default-features = false
 features = ["metal"]
