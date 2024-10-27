@@ -47,19 +47,19 @@ root:
 loggers:
 
   tower_http:
-    level: debug
+    level: info
     additive: false
     appenders:
       - console
 
   whisper_transcribe_rs:
-    level: trace
+    level: info
     additive: false
     appenders:
       - file
       
   whisper_transcribe_rs::streaming:
-    level: trace
+    level: info
     additive: false
     appenders:
       - file_streaming

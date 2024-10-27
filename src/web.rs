@@ -19,7 +19,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 
-use crate::{streaming::Segment, vad_processor::save_buf_to_file};
+use crate::{streaming::Segment, vad_processor::{save_buf_to_file, SAMPLE_SIZE}};
 
 use tokio::io::{self, AsyncReadExt};
 
@@ -100,7 +100,7 @@ fn process_chunk(buffer: &[u8],tx: &Sender::<Option<Segment>>) {
 }
 
 async fn read_stream(mut body_stream: axum::body::BodyDataStream,tx: &Sender::<Option<Segment>>) -> Result<(), Box<dyn std::error::Error>> {
-  const CHUNK_SIZE: usize = 2048;
+  const CHUNK_SIZE: usize = SAMPLE_SIZE as usize * 2; // 2 bytes per sample
 
   let mut buffer = Vec::with_capacity(CHUNK_SIZE);
 

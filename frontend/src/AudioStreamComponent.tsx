@@ -9,12 +9,56 @@ const AudioStreamComponent = () => {
   //const [workletNode, setWorkletNode] = useState(null);
   //const [mediaStream, setMediaStream] = useState(null);
 
+
+  const [count, setCount] = useState(0);
   const audioContextRef = useRef(null);
   const workletNode = useRef(null);
   const mediaStreamRef = useRef(null);
   const bufferRef = useRef(new Uint8Array());
 
+  const timerRef = useRef(null);
 
+  const callweb = useCallback(async (int16Data) => {
+    
+        // send pcmData to the server
+        const res = await fetch('/api/audio_input', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/octet-stream',
+            },
+            body: int16Data // ArrayBuffer,
+        });
+
+        // Log the response
+        const text = await res.text();
+        console.log(res.status);
+        console.log(text);
+}, []);
+
+
+  const processfunc = useCallback(() => {
+
+
+        if (bufferRef.current.length > 16000) {
+            const int16Data = bufferRef.current;
+            bufferRef.current = new Uint8Array();
+            callweb(int16Data);
+        }
+
+
+        setTimeout(() => {
+            processfunc();
+          }, 1000); // delay of 1 second
+
+
+   }, []);
+
+   useEffect(() => {
+
+    processfunc();
+ 
+    
+   }, []);
 
   const initializeAudio = useCallback(async () => {
    
@@ -46,26 +90,6 @@ const AudioStreamComponent = () => {
 
             bufferRef.current = Uint8Array.from([...bufferRef.current, ...pcmData])
 
-            async function callweb(data) {
-            // send pcmData to the server
-            const res = await fetch('/api/audio_input', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/octet-stream',
-                },
-                body: data // ArrayBuffer,
-            });
-
-            // Log the response
-            const text = await res.text();
-            console.log(res.status);
-            console.log(text);
-            }
-            if (bufferRef.current.length > 16000) {
-                const int16Data = bufferRef.current;
-                bufferRef.current = new Uint8Array();
-                callweb(int16Data);
-            }
 
           //console.log('int16Data Data:', int16Data);
         }
@@ -86,14 +110,14 @@ const AudioStreamComponent = () => {
     
   }, []);
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     await initializeAudio();
      
       setIsRecording(true);
 
-  };
+  },[]);
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     
     audioContextRef.current.close();
     
@@ -102,8 +126,12 @@ const AudioStreamComponent = () => {
      // Stop media stream
      mediaStreamRef.current.getTracks().forEach(track => track.stop());
 
+     const int16Data = bufferRef.current;
+     bufferRef.current = new Uint8Array();
+     callweb(int16Data);
+
      setIsRecording(false);
-  };
+  }, []);
 
  
   return (

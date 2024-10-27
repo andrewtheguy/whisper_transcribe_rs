@@ -44,8 +44,8 @@ impl SpeechTag {
     }
 }
 
-const TARGET_SAMPLE_RATE: i64 = 16000;
-const SAMPLE_SIZE: usize = 1024;
+pub const TARGET_SAMPLE_RATE: i64 = 16000;
+pub const SAMPLE_SIZE: usize = 1024;
 
 
 /*
