@@ -10,16 +10,16 @@ const AudioStreamComponent = () => {
     //const [mediaStream, setMediaStream] = useState(null);
     
     
-    const [count, setCount] = useState(0);
-    const audioContextRef = useRef(null);
-    const workletNode = useRef(null);
-    const mediaStreamRef = useRef(null);
-    const sessionIdRef = useRef(null);
+    //const [count, setCount] = useState(0);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const workletNode = useRef<AudioWorkletNode | null>(null);
+    const mediaStreamRef = useRef<MediaStream | null>(null);
+    const sessionIdRef = useRef<string | null>(null);
     const bufferRef = useRef(new Uint8Array());
     
-    const timerRef = useRef(null);
+    //const timerRef = useRef(null);
     
-    const callweb = useCallback(async (int16Data) => {
+    const callweb = useCallback(async (int16Data: Uint8Array) => {
         
         if(!sessionIdRef.current){
             throw new Error('Session id not set');
@@ -31,7 +31,7 @@ const AudioStreamComponent = () => {
             headers: {
                 'Content-Type': 'application/octet-stream',
                 'X-Recording-Timestamp': Date.now().toString(),
-                'X-Session-Id': sessionIdRef.current.toString(),
+                'X-Session-Id': sessionIdRef.current,
             },
             body: int16Data // ArrayBuffer,
         });
@@ -78,7 +78,7 @@ const AudioStreamComponent = () => {
     
     const initializeAudio = useCallback(async () => {
         
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        const audioContext = new window.AudioContext({ sampleRate: 16000 });
         
         // Load the audio worklet
         await audioContext.audioWorklet.addModule(atanProcessorUrl);
@@ -153,12 +153,12 @@ const AudioStreamComponent = () => {
     
     const stopRecording = useCallback(() => {
         
-        audioContextRef.current.close();
+        audioContextRef.current?.close();
         
-        workletNode.current.disconnect();
+        workletNode.current?.disconnect();
         
         // Stop media stream
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current?.getTracks().forEach(track => track.stop());
         
         const int16Data = bufferRef.current;
         bufferRef.current = new Uint8Array();
