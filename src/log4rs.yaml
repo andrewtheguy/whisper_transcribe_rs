@@ -1,4 +1,16 @@
 appenders:
+  console:
+    kind: console
+
+    # The output to write to. One of `stdout` or `stderr`. Defaults to `stdout`.
+    target: stderr
+    # Set this boolean when the console appender must only write when the target is a TTY.
+    tty_only: false
+
+    # The encoder to use to format output. Defaults to `kind: pattern`.
+    encoder:
+      kind: pattern
+      
   file:
     kind: rolling_file
     path: "{{log_path}}"
@@ -30,17 +42,24 @@ appenders:
 root:
   level: info
   appenders:
-    - file
+    - console
 
 loggers:
+
+  tower_http:
+    level: info
+    additive: false
+    appenders:
+      - console
+
   whisper_transcribe_rs:
-    level: trace
+    level: info
     additive: false
     appenders:
       - file
       
   whisper_transcribe_rs::streaming:
-    level: trace
+    level: info
     additive: false
     appenders:
       - file_streaming

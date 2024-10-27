@@ -15,7 +15,7 @@ mod vad;
 mod record_audio;
 mod runtime_utils;
 
-pub mod web;
+mod web;
 //mod record_output;
 
 pub fn convert_file_to_wave(input_file: &str, target_sample_rate: i32) -> Result<Vec<i16>, Box<dyn std::error::Error>> {

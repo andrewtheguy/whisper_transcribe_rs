@@ -1,8 +1,8 @@
-Sample setup to transcribe with whisper.cpp's rust binding
+# Sample setup to transcribe with whisper.cpp's rust binding
 it will convert the url stream with ffmpeg to the waveform in memory first, then output to jsonl and at the same time save to database
 need to install ffmpeg separately
 
-- create a config toml file
+- create a config toml file, see configs for example
 - then run
 ```
 cargo run -- --config-file config.toml transcribe (or save-to-file)
@@ -23,6 +23,15 @@ view logs
 ```
 tail -F 'config dir/logs/rthk2_streaming.log'
 ```
+
+## capture from current computer's microphone
+
+set `source = "microphone"` on config toml
+
+
+## capture from web page's microphone
+
+set `source = "web"` on config toml
 
 TODO:
 

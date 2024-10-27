@@ -15,6 +15,7 @@ pub struct DatabaseConfig {
 pub enum Source {
     Url,
     Microphone,
+    Web, // get microphone input from a web page
 }
 
 #[derive(Deserialize)]

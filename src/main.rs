@@ -101,6 +101,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                              .replace("{{log_path_my_app}}", &log_path_my_app.to_slash().unwrap());
 
 
+            // either this or log4s but not both
+            // Initialize tracing with a subscriber that respects the log level and formats.
+            // tracing_subscriber::fmt()
+            // .with_env_filter(EnvFilter::new("debug")) // Set default log level to debug
+            // .init();
+
             let config_log = serde_yaml::from_str(config_str.as_str()).unwrap();
             log4rs::init_raw_config(config_log).unwrap();
         
