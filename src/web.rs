@@ -80,6 +80,17 @@ async fn test_api(axum::extract::State(state): axum::extract::State<AppState>) -
   })
 }
 
+
+#[axum::debug_handler]
+async fn set_session_id(axum::extract::State(state): axum::extract::State<AppState>,input: Json<SessionIdInput>) -> Json<TestResponse> {
+//eprintln!("session id: {}", input.id);
+  let mut session_id = state.session_id.lock().await;
+  *session_id = Some(input.id.clone());
+  Json(TestResponse {
+      message: "success".to_string(),
+  })
+}
+
 fn process_chunk(buffer: &[u8],tx: &Sender::<Option<Segment>>,timestamp_millis: i64) {
 
   // Convert the raw byte buffer into Vec<i16>
@@ -139,6 +150,10 @@ fn parse_timestamp_millis(ts: &HeaderValue) -> Result<i64, Box<dyn std::error::E
   Ok(ts.to_str()?.parse::<i64>()?)
 }
 
+fn parse_session_id(session_id_header: &HeaderValue) -> Result<&str, Box<dyn std::error::Error>> {
+  Ok(session_id_header.to_str()?)
+}
+
 #[axum::debug_handler]
 async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>,request: axum::http::Request<axum::body::Body>) -> Result<Json<TestResponse>, impl IntoResponse> {
 
@@ -156,7 +171,41 @@ async fn audio_input(axum::extract::State(state): axum::extract::State<AppState>
       message: "missing timestamp".to_string(),
     })));
   };
+
+  let session_id_option = state.session_id.lock().await;
+
+
+  let current_session_id = match session_id_option.clone() {
+    Some(session_id) => session_id,
+    None => {
+      return Err((StatusCode::BAD_REQUEST,Json(TestResponse {
+        message: "session id is not set yet".to_string(),
+      }))); 
+    }
+  };
+
+  drop(session_id_option);
   
+  let session_id = if let Some(session_id_header) = request.headers().get("X-Session-Id") {
+    match parse_session_id(session_id_header) {
+      Ok(session_id) => session_id,
+      Err(e) => {
+        return Err((StatusCode::BAD_REQUEST,Json(TestResponse {
+          message: format!("error parsing session id: {}", e),
+        })));
+      }
+    }
+  } else {
+    return Err((StatusCode::BAD_REQUEST,Json(TestResponse {
+      message: "missing session id".to_string(),
+    })));
+  };
+
+  if session_id != current_session_id {
+    return Err((StatusCode::BAD_REQUEST,Json(TestResponse {
+      message: "session id mismatch, set a new session id if you intent to start a new session and close previous sessions".to_string(),
+    })));
+  }
 
   let body_stream = request.into_body().into_data_stream();
 
@@ -179,9 +228,16 @@ struct TestResponse {
     message: String,
 }
 
+
+#[derive(Serialize, Deserialize)]
+struct SessionIdInput {
+    id: String,
+}
+
 #[derive(Clone)]
 struct AppState {
   tx: Sender::<Option<Segment>>,
+  session_id: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 pub struct TranscribeWebServer {
@@ -195,6 +251,7 @@ impl TranscribeWebServer {
             port,
             state: AppState {
                 tx,
+                session_id: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             }
         }
     }
@@ -210,6 +267,7 @@ impl TranscribeWebServer {
         .route("/vite.svg", get(static_handler))
         .route("/assets/*file", get(static_handler))
         .route("/api/test", axum::routing::get(test_api))
+        .route("/api/set_session_id", axum::routing::post(set_session_id))
         .route("/api/audio_input", axum::routing::post(audio_input))
         .with_state(self.state.clone())
         .fallback_service(get(not_found));

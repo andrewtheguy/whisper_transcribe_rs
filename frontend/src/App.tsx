@@ -22,7 +22,7 @@ function App() {
       <div className="card">
         <AudioStreamComponent />
         <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
+          start recording will invalidate other sessions
         </p>
       </div>
       <p className="read-the-docs">
