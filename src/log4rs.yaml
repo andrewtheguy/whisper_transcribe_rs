@@ -59,7 +59,7 @@ loggers:
       - file
       
   whisper_transcribe_rs::streaming:
-    level: info
+    level: trace
     additive: false
     appenders:
       - file_streaming
