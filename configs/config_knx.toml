@@ -6,7 +6,7 @@ language="en"
 show_name = "knx_news"
 
 [database_config]
-database_host = "10.22.33.120"
+database_host = "postgres.local.168234.xyz"
 database_user = "postgres"
 database_port = 5432
 database_password_key = "postgres_portainer"
